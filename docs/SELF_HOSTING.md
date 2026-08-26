@@ -18,6 +18,10 @@ for what this replaces.
 Nothing about the database, business logic, or UI changed. The app still runs on
 Netlify exactly as before unless you actively set the new env vars.
 
+Deploying specifically to AWS (EC2 + RDS + S3)? See
+[docs/DEPLOYMENT_AWS.md](DEPLOYMENT_AWS.md) for the AWS-specific provisioning steps —
+it builds on everything below.
+
 ## 1. The one security-critical setting: `TRUSTED_IP_HEADER`
 
 Office-network attendance verification only works if the app can trust the IP it
@@ -45,10 +49,9 @@ one it merely forwards. Get this wrong and either attendance verification breaks
 Pick one, set `STORAGE_DRIVER` accordingly (see `.env.example` for all the specific
 vars each needs):
 
-- **`s3`** (recommended) — any S3-compatible store. `docker-compose.yml` bundles
-  MinIO if you don't already have object storage; point at AWS S3 or existing
-  infra instead by setting `S3_ENDPOINT`/credentials and dropping the `minio`
-  service.
+- **`s3`** (recommended) — any S3-compatible store: real AWS S3 (see
+  [docs/DEPLOYMENT_AWS.md](DEPLOYMENT_AWS.md)), or a MinIO container you run
+  yourself alongside this stack if you don't already have object storage.
 - **`local`** — writes to disk (`STORAGE_LOCAL_DIR`). Only correct for a single
   server/replica — mount it as a persistent volume so it survives container
   restarts.
@@ -86,28 +89,42 @@ routes Netlify's Scheduled Functions call today, authenticated with the same
 
 No change required. Keep using Neon (it's just Postgres — nothing about it is
 Netlify-specific), or point `DATABASE_URL`/`DIRECT_URL` at Postgres you run
-yourself (`docker-compose.yml` includes a `postgres` service if you want it on the
-same host). See [docs/DATABASE.md](DATABASE.md).
+yourself. `docker-compose.yml` has no bundled Postgres container — deliberately, so
+the exact same compose file works unchanged from a laptop to production (see its own
+header comment): bring a real, already-running Postgres and just point `DATABASE_URL`
+at it, whether that's a native local install, a managed instance (e.g. RDS — see
+[docs/DEPLOYMENT_AWS.md](DEPLOYMENT_AWS.md)), or a Postgres container you run and
+manage yourself outside this compose file. See [docs/DATABASE.md](DATABASE.md).
 
 ## 5. Running it
 
+Have a real Postgres reachable first (§4) — create the database if it doesn't exist yet
+(`createdb attendance`), then:
+
 ```bash
 cp .env.example .env
-# fill in: DATABASE_URL, AUTH_SECRET, QR_SECRET, NETWORK_AGENT_SECRET,
-# CRON_SECRET, APP_URL/NEXT_PUBLIC_APP_URL, STORAGE_DRIVER + its vars,
-# TRUSTED_IP_HEADER, RESEND_API_KEY/RESEND_FROM_EMAIL, POSTGRES_PASSWORD
+# fill in: DATABASE_URL (§4 — use "host.docker.internal" instead of "localhost" if
+# Postgres runs on this same host, since the app runs inside a container), AUTH_SECRET,
+# QR_SECRET, NETWORK_AGENT_SECRET, CRON_SECRET, APP_URL/NEXT_PUBLIC_APP_URL,
+# STORAGE_DRIVER + its vars, TRUSTED_IP_HEADER, RESEND_API_KEY/RESEND_FROM_EMAIL
 
 docker compose build
-docker compose up -d migrate   # applies migrations once, then exits
-docker compose up -d           # starts postgres, minio, app, cron
+docker compose up -d migrate   # applies prisma/migrations — creates the schema from
+                                 # scratch on an empty DB, or just the new migrations
+                                 # on an existing one. Safe to re-run any time.
+docker compose up -d           # starts app, cron, nginx
 
 SEED_ADMIN_EMAIL=you@company.com SEED_ADMIN_PASSWORD='a-strong-password' \
   docker compose run --rm migrate npx tsx prisma/seed.ts
 ```
 
-Point nginx (or your existing reverse proxy) at `deploy/nginx.conf`, adjusting
-`server_name` and the TLS certificate paths for your domain — a plain
-`certbot --nginx` run against that config works for Let's Encrypt.
+`nginx` is one of the services `docker compose up -d` just started — no separate
+install needed. `deploy/nginx.conf` (the config it loads by default) is plain HTTP with
+no domain required, so `http://<server-ip>/` works immediately. Once you have a domain,
+copy `deploy/nginx.https.conf.example` over `deploy/nginx.conf`, fill in `server_name`
+and the TLS certificate paths, and run `certbot --nginx` against it for Let's Encrypt —
+a bare IP address can't get a Let's Encrypt cert, which is why this is a later step, not
+day one.
 
 Re-run `docker compose up -d migrate` after every future schema change, same as
 `npm run db:deploy` was run manually against Netlify.

@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { SECURE_COOKIES } from "@/lib/security/secureCookies";
 
 /**
  * Persistent per-browser device identifier — a random ID in a long-lived
@@ -25,7 +26,7 @@ export function generateDeviceId(): string {
 
 export const DEVICE_ID_COOKIE_OPTIONS = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
+  secure: SECURE_COOKIES,
   sameSite: "lax" as const,
   path: "/",
   maxAge: DEVICE_ID_MAX_AGE_SECONDS,

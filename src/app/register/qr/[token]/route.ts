@@ -3,6 +3,7 @@ import { getClientIp } from "@/lib/network/getClientIp";
 import { validateQrToken, startQrSession } from "@/lib/qr/session";
 import { QR_SESSION_COOKIE } from "@/lib/attendance/clockHandler";
 import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rateLimit";
+import { SECURE_COOKIES } from "@/lib/security/secureCookies";
 
 export const runtime = "nodejs";
 
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const response = NextResponse.redirect(new URL("/register?qr=1", request.url));
   response.cookies.set(QR_SESSION_COOKIE, session.sessionToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: SECURE_COOKIES,
     sameSite: "lax",
     path: "/",
     expires: session.expiresAt,

@@ -96,6 +96,31 @@ at it, whether that's a native local install, a managed instance (e.g. RDS — s
 [docs/DEPLOYMENT_AWS.md](DEPLOYMENT_AWS.md)), or a Postgres container you run and
 manage yourself outside this compose file. See [docs/DATABASE.md](DATABASE.md).
 
+### Migrating existing production data to a new database
+
+If you're moving off Neon to your own Postgres and want the real data (employees,
+attendance history, settings, audit log) rather than starting fresh, use
+`scripts/export-data.ts` / `scripts/import-data.ts` instead of `pg_dump`/`pg_restore` —
+those two tools need to be within one major version of the server they're talking to,
+which frequently isn't true when going from a managed Postgres like Neon to whatever
+your new box happens to ship. These scripts go through Prisma instead, so any Postgres
+version works on either end.
+
+```bash
+# From a machine that can reach the OLD database:
+DATABASE_URL="<old DATABASE_URL>" npx tsx scripts/export-data.ts production_data.json
+
+# From a machine that can reach the NEW database (after it's migrated — step 5 below):
+DATABASE_URL="<new DATABASE_URL>" npx tsx scripts/import-data.ts production_data.json
+```
+
+`import-data.ts` refuses to run (without `--force`) if the target already has any admin
+users, so it can't silently duplicate data into a deployment someone's already started
+using. It skips `Session` (old login cookies wouldn't be valid against a new server
+anyway) and `RateLimitBucket` (transient counters, not data) — every admin will need to
+log in fresh afterward. `production_data.json` contains real employee PII and password
+hashes; delete it once the import is confirmed working, and never commit it.
+
 ## 5. Running it
 
 Have a real Postgres reachable first (§4) — create the database if it doesn't exist yet

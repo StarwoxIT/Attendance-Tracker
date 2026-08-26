@@ -13,7 +13,7 @@ const ADMIN_SESSION_COOKIE = "attendance_admin_session";
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  if (pathname.startsWith("/admin") && pathname !== "/admin/login") {
+  if (pathname.startsWith("/admin") && pathname !== "/admin/login" && pathname !== "/admin/setup") {
     const hasSession = request.cookies.has(ADMIN_SESSION_COOKIE);
     if (!hasSession) {
       return NextResponse.redirect(new URL("/admin/login", request.url));

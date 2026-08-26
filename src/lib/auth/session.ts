@@ -2,6 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { createHash, randomBytes } from "crypto";
 import { prisma } from "@/lib/db/prisma";
+import { SECURE_COOKIES } from "@/lib/security/secureCookies";
 import type { User } from "@prisma/client";
 
 const SESSION_COOKIE = "attendance_admin_session";
@@ -28,7 +29,7 @@ export async function createSession(userId: string, ip: string | null, userAgent
   const store = await cookies();
   store.set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: SECURE_COOKIES,
     sameSite: "lax",
     path: "/",
     expires: expiresAt,

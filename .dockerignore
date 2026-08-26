@@ -8,3 +8,7 @@ coverage
 .env
 .env.local
 storage
+# Real PII/password-hash dumps (scripts/export-data.ts output) — must never be
+# baked into an image layer. Mount them at `docker compose run` time instead
+# (-v path/to/file.json:/app/file.json:ro), see docs/SELF_HOSTING.md.
+production_data*.json

@@ -35,6 +35,7 @@ Postgres locally).
 | [docs/DATABASE.md](docs/DATABASE.md) | Schema, providers, migrations |
 | [docs/DEPLOYMENT_NETLIFY.md](docs/DEPLOYMENT_NETLIFY.md) | End-to-end production deployment |
 | [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) | Migrating off Netlify to your own server (Docker) |
+| [docs/DEPLOYMENT_AWS.md](docs/DEPLOYMENT_AWS.md) | Self-hosting specifically on AWS (EC2 + RDS + S3) |
 | [docs/OFFICE_NETWORK_AGENT_SETUP.md](docs/OFFICE_NETWORK_AGENT_SETUP.md) | Installing the on-site Network Agent (Windows/Linux/macOS) |
 | [docs/QR_ATTENDANCE.md](docs/QR_ATTENDANCE.md) | QR generation, validation, session lifecycle |
 | [docs/SECURITY.md](docs/SECURITY.md) | Threat model, what is/isn't verified, and why |

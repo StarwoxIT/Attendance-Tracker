@@ -56,9 +56,19 @@ async function main() {
   console.log("Importing into:", process.env.DATABASE_URL?.replace(/:[^:@]+@/, ":***@"));
   const data = JSON.parse(readFileSync(inPath, "utf8")) as ExportedData;
 
-  // Same parent-before-child order as export-data.ts.
-  await prisma.companySettings.createMany({ data: data.companySettings, skipDuplicates: true });
-  await prisma.attendanceSettings.createMany({ data: data.attendanceSettings, skipDuplicates: true });
+  // CompanySettings/AttendanceSettings are fixed-id("singleton") rows the app
+  // auto-creates with defaults on first-ever page load — which typically already
+  // happened on the target before this script ever runs. createMany+skipDuplicates
+  // would silently keep that default instead of the real imported values, so these
+  // two use upsert instead, same as every other table stays createMany below.
+  for (const row of data.companySettings) {
+    await prisma.companySettings.upsert({ where: { id: row.id }, create: row, update: row });
+  }
+  for (const row of data.attendanceSettings) {
+    await prisma.attendanceSettings.upsert({ where: { id: row.id }, create: row, update: row });
+  }
+
+  // Parent-before-child order, matching export-data.ts.
   await prisma.department.createMany({ data: data.department, skipDuplicates: true });
   await prisma.office.createMany({ data: data.office, skipDuplicates: true });
   await prisma.user.createMany({ data: data.user, skipDuplicates: true });

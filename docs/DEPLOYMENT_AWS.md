@@ -23,9 +23,15 @@ groups, and IAM.
 
 `nginx` is a container in the same `docker-compose.yml` as `app` (not host-installed) —
 see the compose file's own comment on why it's required even before you have a domain
-or TLS: it's what makes `TRUSTED_IP_HEADER` trustworthy at all. No domain/Route 53/cert
-is needed to go live — access the app at `http://<elastic-ip>/` and add a domain + TLS
-later by swapping in `deploy/nginx.https.conf.example` (§4).
+or TLS: it's what makes `TRUSTED_IP_HEADER` trustworthy at all.
+
+**The admin dashboard does not work at all over plain HTTP** — the login session cookie
+is set with `Secure` in production, which browsers refuse to store or send back over a
+non-HTTPS origin, so every click after logging in bounces straight back to `/admin/login`
+in a loop. Domain + TLS (§ "Adding a domain + TLS later" below) is **required** before
+anyone can use `/admin`, not an optional hardening step to add later. The employee-facing
+`/register` clock-in flow has no such requirement and works fine over plain
+`http://<elastic-ip>/` in the meantime, if you need the box reachable before TLS is ready.
 
 One instance is enough for this app's scale (a single-office SME's attendance system) —
 this doc does not cover ALB/ECS/multi-AZ. If you outgrow one box, the app is already
@@ -144,7 +150,7 @@ TCP connection, so a client can't forge it. Full explanation in
 [docs/SELF_HOSTING.md §1](SELF_HOSTING.md#1-the-one-security-critical-setting-trusted_ip_header).
 Test by clocking in from off the office network and confirming it's denied.
 
-### Adding a domain + TLS later
+### Adding a domain + TLS (required before `/admin` works)
 
 1. Point Route 53 (or your DNS provider) at the Elastic IP.
 2. Open port 443 in the EC2 security group.

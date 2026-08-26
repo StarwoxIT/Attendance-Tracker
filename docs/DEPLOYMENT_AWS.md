@@ -118,17 +118,21 @@ git clone <your-repo-url> attendance && cd attendance
 cp .env.example .env
 # fill in: DATABASE_URL/DIRECT_URL (step 1), APP_URL/NEXT_PUBLIC_APP_URL (your domain),
 # AUTH_SECRET, QR_SECRET, NETWORK_AGENT_SECRET, CRON_SECRET (openssl rand -base64 48 each),
-# STORAGE_DRIVER=s3 + S3_* (step 2), TRUSTED_IP_HEADER=x-real-ip (see below)
+# STORAGE_DRIVER=s3 + S3_* (step 2), TRUSTED_IP_HEADER=x-real-ip (see below),
+# SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD (see below)
 
 docker compose build
-docker compose up -d migrate   # applies prisma/migrations — creates the schema from
+docker compose up -d migrate   # applies prisma/migrations (creates the schema from
                                  # scratch on the empty RDS database on first run, or
-                                 # just the new migrations on subsequent deploys
+                                 # just the new migrations on subsequent deploys), then
+                                 # ensures the SEED_ADMIN_* super admin exists — both
+                                 # steps are safe to re-run on every deploy
 docker compose up -d           # starts app, cron, nginx
-
-SEED_ADMIN_EMAIL=you@company.com SEED_ADMIN_PASSWORD='a-strong-password' \
-  docker compose run --rm migrate npx tsx prisma/seed.ts
 ```
+
+Setting `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD` is enough — `migrate` creates that
+`SUPER_ADMIN` automatically and skips it on later runs once the account already exists
+(`prisma/seed.ts`), no separate seed command needed.
 
 Open `http://<elastic-ip>/` — that's it, no domain or cert needed to be live. Set
 `APP_URL`/`NEXT_PUBLIC_APP_URL` in `.env` to that same `http://<elastic-ip>` for now;

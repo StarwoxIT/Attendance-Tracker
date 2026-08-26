@@ -25,11 +25,13 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npx prisma generate
 RUN npm run build
 
-# --- migrate: one-shot container that applies pending migrations and exits.
-# Has the full node_modules (incl. the prisma CLI), unlike the slim runner below.
-# Run this before (or via docker-compose's dependency ordering) starting `app`.
+# --- migrate: one-shot container that applies pending migrations, ensures the
+# super admin from SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD exists (no-op if already
+# seeded or if those vars are unset — see prisma/seed.ts), then exits. Has the
+# full node_modules (incl. the prisma CLI and tsx), unlike the slim runner below.
+# Runs before `app` via docker-compose's dependency ordering.
 FROM builder AS migrate
-CMD ["npx", "prisma", "migrate", "deploy"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npx tsx prisma/seed.ts"]
 
 # --- runner: minimal final image, only what next.config.ts's `output: "standalone"`
 # actually needs to run the server ---

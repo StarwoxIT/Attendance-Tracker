@@ -9,7 +9,12 @@ FROM node:20-slim AS base
 FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+# --ignore-scripts: package.json's own "postinstall" runs `prisma generate`, which
+# needs prisma/schema.prisma — not present in this stage (only package.json/
+# package-lock.json are, so this layer caches across unrelated source changes).
+# Harmless to skip here: the builder stage below has the full source and already
+# runs `prisma generate` explicitly before `next build`.
+RUN npm ci --ignore-scripts
 
 # --- builder: full app build, including prisma generate + next build ---
 FROM base AS builder
@@ -52,4 +57,10 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules/@prisma/client ./nod
 
 USER nextjs
 EXPOSE 3000
+
+# Hits `/`, which queries the DB (getCompanySettings) — a 5xx here means either
+# the Next.js process or its DB connection (e.g. RDS reachability) is down.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD ["node", "-e", "require('http').get({host:'127.0.0.1',port:process.env.PORT||3000,path:'/'},r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
+
 CMD ["node", "server.js"]

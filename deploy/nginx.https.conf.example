@@ -1,15 +1,21 @@
-# Reverse proxy for self-hosting — current config: plain HTTP, no domain name
-# required. Works against a bare IP address (http://<ec2-public-ip>/). Runs as
-# the "nginx" service in docker-compose.yml, which is why `proxy_pass` below
-# can use the service name "app" instead of an IP/port.
-#
-# Once you have a domain and are ready for TLS, switch to
-# deploy/nginx.https.conf.example instead (copy it over this file, fill in
-# your domain + cert paths, then `certbot --nginx` against it).
+# TLS + domain version of deploy/nginx.conf — use this once you have a domain
+# pointed at this box. Copy over deploy/nginx.conf, fill in server_name and the
+# cert paths, then run `certbot --nginx` against it for Let's Encrypt (bare IP
+# addresses can't get a Let's Encrypt cert — a domain is required for this step).
 
 server {
-    listen 80 default_server;
-    server_name _; # match any Host header — i.e. a bare IP address
+    listen 80;
+    server_name attendance.yourcompany.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name attendance.yourcompany.com;
+
+    ssl_certificate     /etc/letsencrypt/live/attendance.yourcompany.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/attendance.yourcompany.com/privkey.pem;
 
     client_max_body_size 10m; # logo/photo uploads are capped at 5MB app-side; leave headroom
 

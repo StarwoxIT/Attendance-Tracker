@@ -55,6 +55,15 @@ machine, with production `DATABASE_URL`/`DIRECT_URL` in your shell:
 
 ```bash
 npm run db:deploy
+```
+
+Then visit the deployed site — with zero admins in the database, `/admin/login` automatically
+redirects to `/admin/setup`, a one-time page for creating the first Super Admin (name, email,
+password) with no shell/DB access needed. It stops being reachable once that admin exists.
+
+Prefer scripting the whole deploy end-to-end instead? The old CLI path still works too:
+
+```bash
 SEED_ADMIN_EMAIL=you@company.com SEED_ADMIN_PASSWORD='a-strong-password' npm run db:seed
 ```
 

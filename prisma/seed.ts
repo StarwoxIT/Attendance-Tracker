@@ -1,9 +1,14 @@
 /**
- * Initial deployment seed: creates the first SUPER_ADMIN and default settings rows.
- * Safe to re-run — every step is idempotent (upsert / findFirst-or-create).
+ * Deployment seed: creates the first SUPER_ADMIN (if SEED_ADMIN_EMAIL/PASSWORD are
+ * set) and default settings rows. Safe to re-run, and safe to run on every deploy —
+ * every step is idempotent (upsert), and an existing user with that email is left
+ * untouched rather than overwritten. Runs automatically as part of the `migrate`
+ * container's startup command (see Dockerfile) in the self-hosted/Docker setup.
  *
- * Required env vars: SEED_ADMIN_EMAIL, SEED_ADMIN_PASSWORD, SEED_ADMIN_NAME.
- * Intentionally has no hard-coded fallback credentials — see docs/DEPLOYMENT_VERCEL.md.
+ * SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD are optional here: unset means "don't seed
+ * an admin this run" (e.g. after the first deploy, once an admin already exists),
+ * not a misconfiguration. Intentionally has no hard-coded fallback credentials —
+ * see docs/DEPLOYMENT_VERCEL.md.
  */
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
@@ -15,24 +20,27 @@ async function main() {
   const password = process.env.SEED_ADMIN_PASSWORD;
   const name = process.env.SEED_ADMIN_NAME ?? "Super Admin";
 
-  if (!email || !password) {
-    throw new Error(
-      "SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD must be set to seed the first administrator.\n" +
-        "Example: SEED_ADMIN_EMAIL=admin@example.com SEED_ADMIN_PASSWORD='a-strong-password' npm run db:seed"
-    );
-  }
-  if (password.length < 10) {
-    throw new Error("SEED_ADMIN_PASSWORD must be at least 10 characters.");
-  }
+  if (!email && !password) {
+    console.log("SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD not set — skipping super admin seed.");
+  } else if (!email || !password) {
+    throw new Error("SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD must both be set (or both left unset).");
+  } else {
+    if (password.length < 10) {
+      throw new Error("SEED_ADMIN_PASSWORD must be at least 10 characters.");
+    }
 
-  const passwordHash = await bcrypt.hash(password, 12);
+    const passwordHash = await bcrypt.hash(password, 12);
 
-  const admin = await prisma.user.upsert({
-    where: { email: email.toLowerCase() },
-    update: {},
-    create: { email: email.toLowerCase(), passwordHash, fullName: name, role: "SUPER_ADMIN" },
-  });
-  console.log(`Super admin ready: ${admin.email}`);
+    const existing = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    if (existing) {
+      console.log(`Super admin already exists, skipping: ${existing.email}`);
+    } else {
+      const admin = await prisma.user.create({
+        data: { email: email.toLowerCase(), passwordHash, fullName: name, role: "SUPER_ADMIN" },
+      });
+      console.log(`Super admin created: ${admin.email}`);
+    }
+  }
 
   await prisma.companySettings.upsert({
     where: { id: "singleton" },

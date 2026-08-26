@@ -106,17 +106,22 @@ cp .env.example .env
 # fill in: DATABASE_URL (§4 — use "host.docker.internal" instead of "localhost" if
 # Postgres runs on this same host, since the app runs inside a container), AUTH_SECRET,
 # QR_SECRET, NETWORK_AGENT_SECRET, CRON_SECRET, APP_URL/NEXT_PUBLIC_APP_URL,
-# STORAGE_DRIVER + its vars, TRUSTED_IP_HEADER, RESEND_API_KEY/RESEND_FROM_EMAIL
+# STORAGE_DRIVER + its vars, TRUSTED_IP_HEADER, RESEND_API_KEY/RESEND_FROM_EMAIL,
+# SEED_ADMIN_EMAIL/SEED_ADMIN_PASSWORD (see below)
 
 docker compose build
-docker compose up -d migrate   # applies prisma/migrations — creates the schema from
+docker compose up -d migrate   # applies prisma/migrations (creates the schema from
                                  # scratch on an empty DB, or just the new migrations
-                                 # on an existing one. Safe to re-run any time.
+                                 # on an existing one), then ensures the SEED_ADMIN_*
+                                 # super admin exists — both steps are safe to re-run
 docker compose up -d           # starts app, cron, nginx
-
-SEED_ADMIN_EMAIL=you@company.com SEED_ADMIN_PASSWORD='a-strong-password' \
-  docker compose run --rm migrate npx tsx prisma/seed.ts
 ```
+
+Setting `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD` in `.env` is enough — the `migrate`
+container creates that `SUPER_ADMIN` automatically every time it runs (`prisma/seed.ts`),
+and just as automatically skips it once the account already exists. No separate seed
+command needed. Leave both unset to skip seeding entirely (e.g. once the admin exists
+and you'd rather not keep the password in `.env`).
 
 `nginx` is one of the services `docker compose up -d` just started — no separate
 install needed. `deploy/nginx.conf` (the config it loads by default) is plain HTTP with

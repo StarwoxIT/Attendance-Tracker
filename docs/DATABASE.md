@@ -75,5 +75,9 @@ against a production database; it drops the schema.
 
 ## Seeding
 
-`prisma/seed.ts` is idempotent (safe to re-run) and requires `SEED_ADMIN_EMAIL` +
-`SEED_ADMIN_PASSWORD` as environment variables — there is no hard-coded default account.
+`prisma/seed.ts` is idempotent (safe to re-run, and safe to run on every deploy) —
+there is no hard-coded default account. With `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD`
+set, it creates that `SUPER_ADMIN` if it doesn't already exist, and skips it (leaving
+the existing account untouched) if it does. Leaving both unset skips seeding entirely
+rather than erroring. Self-hosted via Docker, this runs automatically as part of the
+`migrate` container's startup (see `Dockerfile`) — no separate command needed there.

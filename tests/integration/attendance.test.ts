@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
+import { formatInTimeZone } from "date-fns-tz";
 import { prisma } from "@/lib/db/prisma";
 import { recordAttendance } from "@/lib/attendance/engine";
 import { updateAttendanceSettings } from "@/lib/attendance/settings";
@@ -141,7 +142,44 @@ describeIfDb("recordAttendance — integration", () => {
       if (!third.ok) expect(third.reason).toBe("ALREADY_COMPLETE");
     });
 
+    it("never rate-limits distinct employees clocking in concurrently from the same office IP", async () => {
+      // Every device on an office's Wi-Fi shares one public IP via NAT. The
+      // attendance-id rate limit (8 per 5 min) must only ever throttle *invalid*
+      // ID guesses from that IP, never a whole office's worth of legitimate,
+      // correctly-identified employees clocking in at once (e.g. the morning rush).
+      const employees = await Promise.all(Array.from({ length: 12 }, () => makeEmployee()));
+      const officeIp = "102.89.0.1";
+
+      for (const { attendanceId } of employees) {
+        const result = await recordAttendance({ attendanceIdRaw: attendanceId, sourceIp: officeIp, userAgent: "vitest" });
+        expect(result.ok).toBe(true);
+        if (result.ok) expect(result.action).toBe("CLOCK_IN");
+      }
+    });
+
+    it("still rate-limits repeated invalid Attendance ID guesses from the same IP", async () => {
+      const officeIp = "102.89.0.1";
+      let lastResult;
+      for (let i = 0; i < 9; i++) {
+        lastResult = await recordAttendance({ attendanceIdRaw: "NOTAREALID", sourceIp: officeIp, userAgent: "vitest" });
+      }
+      expect(lastResult!.ok).toBe(false);
+      if (!lastResult!.ok) expect(lastResult!.reason).toBe("RATE_LIMITED");
+    });
+
     it("requires a reason to clock out before the scheduled end of day, then accepts it", async () => {
+      // workEnd must be after "now" for this test to exercise the EARLY path — the
+      // suite's default 17:00 stops being in the future once run later in the day,
+      // making this flaky by wall-clock time. Push it an hour past "now" instead.
+      const futureWorkEnd = formatInTimeZone(new Date(Date.now() + 60 * 60 * 1000), TZ, "HH:mm");
+      await updateAttendanceSettings({
+        timezone: TZ,
+        workStart: "09:00",
+        gracePeriodMinutes: 15,
+        workEnd: futureWorkEnd,
+        attendanceMode: "NETWORK_ONLY",
+      });
+
       const { attendanceId } = await makeEmployee();
       const input = { attendanceIdRaw: attendanceId, sourceIp: "102.89.0.1", userAgent: "vitest" };
 

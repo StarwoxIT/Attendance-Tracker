@@ -47,7 +47,19 @@ export async function updateBrandingAction(_prev: BrandingState, formData: FormD
       logoUrl = uploaded.url;
     } catch (err) {
       if (err instanceof UploadValidationError) return { error: err.message };
-      throw err;
+      // Anything else here is an object-storage configuration problem (missing/
+      // wrong STORAGE_DRIVER env vars — S3 credentials, local dir permissions,
+      // or Netlify Blobs credentials on a non-Netlify deployment), not something
+      // the admin filling this form can fix. Surface it clearly instead of
+      // letting it fall through to a blank "server error" page — the real
+      // error (with STORAGE_DRIVER's value) still goes to the server logs for
+      // whoever can actually fix the deployment config.
+      console.error(`Logo upload failed (STORAGE_DRIVER=${process.env.STORAGE_DRIVER ?? "unset"}):`, err);
+      return {
+        error:
+          "Couldn't upload the logo — object storage isn't configured correctly for this deployment. " +
+          "Check STORAGE_DRIVER and its related env vars (see .env.example), or ask whoever manages the server to check its logs.",
+      };
     }
   }
 

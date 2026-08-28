@@ -85,14 +85,22 @@ async function alertSuperAdminsOfNetworkDenial(
  * except the Attendance ID and the opaque QR session token.
  */
 export async function recordAttendance(input: RecordAttendanceInput): Promise<AttendanceActionResult> {
-  const rateLimit = await checkRateLimit(input.sourceIp, RATE_LIMITS.attendanceId);
-  if (!rateLimit.allowed) {
-    return { ok: false, reason: "RATE_LIMITED", retryAfterSeconds: rateLimit.retryAfterSeconds };
-  }
-
   const lookup = hashAttendanceId(normalizeAttendanceId(input.attendanceIdRaw));
   const employee = await prisma.employee.findUnique({ where: { attendanceIdLookup: lookup } });
   if (!employee || employee.isDeleted || employee.employmentStatus !== "ACTIVE") {
+    // Rate limiting is keyed by source IP, and every device on an office's Wi-Fi
+    // shares one public IP via NAT — so it must only ever throttle *invalid* ID
+    // guesses (the actual brute-force attack this defends against), never valid
+    // ones. Checking it here, only on the invalid-employee path, means a whole
+    // office clocking in concurrently with correct IDs can never trip it; only
+    // repeated wrong guesses from the same IP can. Attendance IDs are also
+    // high-entropy random tokens (see lib/security/attendanceId.ts), so a
+    // legitimate match here was never realistically reachable by guessing —
+    // this rate limit is defense-in-depth, not the primary protection.
+    const rateLimit = await checkRateLimit(input.sourceIp, RATE_LIMITS.attendanceId);
+    if (!rateLimit.allowed) {
+      return { ok: false, reason: "RATE_LIMITED", retryAfterSeconds: rateLimit.retryAfterSeconds };
+    }
     return { ok: false, reason: "INVALID_EMPLOYEE" };
   }
 

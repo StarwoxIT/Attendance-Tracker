@@ -20,6 +20,10 @@ function dateRangeLabel(qr: { attendanceDate: Date; validUntil: Date }): string 
   return start === end ? start : `${start} – ${end}`;
 }
 
+function missingArtifacts(qr: { pdfUrl: string | null; pngUrl: string | null }): boolean {
+  return !qr.pdfUrl && !qr.pngUrl;
+}
+
 export default async function QrPage() {
   const [offices, qrCodes, settings] = await Promise.all([
     prisma.office.findMany({ orderBy: { name: "asc" } }),
@@ -84,6 +88,14 @@ export default async function QrPage() {
                   PDF
                 </a>
               ) : null}
+              {missingArtifacts(qr) ? (
+                <span
+                  className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+                  title="PDF/PNG generation failed for this QR code. It's still valid for clock-in — check the server's storage configuration to enable downloads."
+                >
+                  No files
+                </span>
+              ) : null}
               {qr.status === "ACTIVE" || qr.status === "SCHEDULED" ? (
                 <DeactivateQrButton qrId={qr.id} className="text-sm text-red-600 hover:underline" />
               ) : null}
@@ -131,6 +143,14 @@ export default async function QrPage() {
                       <a href={qr.pdfUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">
                         PDF
                       </a>
+                    ) : null}
+                    {missingArtifacts(qr) ? (
+                      <span
+                        className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+                        title="PDF/PNG generation failed for this QR code. It's still valid for clock-in — check the server's storage configuration to enable downloads."
+                      >
+                        No files
+                      </span>
                     ) : null}
                     {qr.status === "ACTIVE" || qr.status === "SCHEDULED" ? <DeactivateQrButton qrId={qr.id} /> : null}
                   </div>

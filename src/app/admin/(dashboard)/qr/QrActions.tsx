@@ -13,8 +13,17 @@ export function GenerateQrForm({ offices, todayStr }: { offices: Office[]; today
   function submit(formData: FormData) {
     startTransition(async () => {
       try {
-        await generateQrAction(formData);
-        toast({ title: "QR code generated", variant: "success" });
+        const result = await generateQrAction(formData);
+        if (result.artifactsFailed) {
+          toast({
+            title: "QR code generated, but PDF/PNG couldn't be created",
+            description:
+              "The QR is still valid for clock-in. Ask whoever manages the server to check the storage configuration.",
+            variant: "warning",
+          });
+        } else {
+          toast({ title: "QR code generated", variant: "success" });
+        }
       } catch (err) {
         toastError(err, "Couldn't generate QR code");
       }

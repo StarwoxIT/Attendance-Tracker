@@ -37,6 +37,11 @@ export interface GenerateQrParams {
 export interface GenerateQrResult {
   qrCode: AttendanceQrCode;
   rawToken: string;
+  /** True when PDF/PNG rendering or upload failed — the QR itself is still valid for
+   * clock-in, but there's nothing to print. Almost always an object-storage
+   * misconfiguration (STORAGE_DRIVER and its related env vars); see the console.error
+   * this logs for the actual cause. */
+  artifactsFailed?: boolean;
 }
 
 /** Generates (or regenerates) the QR code for an office over a date range (a single day by
@@ -101,8 +106,11 @@ export async function generateDailyQr(params: GenerateQrParams): Promise<Generat
     const withArtifacts = await renderAndStoreQrArtifacts(qrCode, rawToken);
     return { qrCode: withArtifacts, rawToken };
   } catch (err) {
-    console.error("QR artifact rendering/upload failed; QR code is still valid without PDF/PNG.", err);
-    return { qrCode, rawToken };
+    console.error(
+      `QR artifact rendering/upload failed (STORAGE_DRIVER=${process.env.STORAGE_DRIVER ?? "unset"}); QR code is still valid without PDF/PNG.`,
+      err
+    );
+    return { qrCode, rawToken, artifactsFailed: true };
   }
 }
 

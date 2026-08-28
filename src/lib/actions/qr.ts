@@ -32,7 +32,11 @@ function endDateFor(startDateKey: Date, duration: "DAY" | "WEEK" | "MONTH"): Dat
   }
 }
 
-export async function generateQrAction(formData: FormData): Promise<void> {
+export interface GenerateQrActionResult {
+  artifactsFailed: boolean;
+}
+
+export async function generateQrAction(formData: FormData): Promise<GenerateQrActionResult> {
   const user = await requirePermission("qr", "manage");
   const parsed = genSchema.parse(Object.fromEntries(formData));
 
@@ -40,7 +44,7 @@ export async function generateQrAction(formData: FormData): Promise<void> {
   const dateKey = getAttendanceDateKey(new Date(`${parsed.date}T12:00:00Z`), office.timezone);
   const validUntilDate = endDateFor(dateKey, parsed.duration);
 
-  await generateDailyQr({
+  const result = await generateDailyQr({
     officeId: parsed.officeId,
     attendanceDate: dateKey,
     validUntilDate,
@@ -50,6 +54,7 @@ export async function generateQrAction(formData: FormData): Promise<void> {
   });
 
   revalidatePath("/admin/qr");
+  return { artifactsFailed: result.artifactsFailed ?? false };
 }
 
 export async function deactivateQrAction(qrId: string): Promise<void> {

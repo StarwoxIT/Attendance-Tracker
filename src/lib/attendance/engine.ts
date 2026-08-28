@@ -162,10 +162,11 @@ export async function recordAttendance(input: RecordAttendanceInput): Promise<At
   try {
     if (!existing) {
       const holiday = await prisma.holiday.findUnique({ where: { date: attendanceDate } });
-      const classification = classifyClockIn(now, settings, {
-        isWeekendDay: isWeekend(now, settings.timezone),
-        isHoliday: !!holiday && holiday.isActive,
-      });
+      const classification = classifyClockIn(
+        now,
+        { ...settings, workStart: employee.workStart ?? settings.workStart },
+        { isWeekendDay: isWeekend(now, settings.timezone), isHoliday: !!holiday && holiday.isActive }
+      );
 
       const record = await prisma.attendanceRecord.create({
         data: {
@@ -194,7 +195,7 @@ export async function recordAttendance(input: RecordAttendanceInput): Promise<At
       return { ok: true, action: "CLOCK_IN", record, firstName: employee.firstName };
     }
 
-    const clockOutStatus = classifyClockOut(now, settings);
+    const clockOutStatus = classifyClockOut(now, { ...settings, workEnd: employee.workEnd ?? settings.workEnd });
     let earlyClockOutReason: string | null = null;
     if (clockOutStatus === "EARLY") {
       const reason = input.earlyClockOutReason?.trim() ?? "";

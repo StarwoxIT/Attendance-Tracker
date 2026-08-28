@@ -64,7 +64,12 @@ export function NewEmployeeForm({ offices, departments }: { offices: Office[]; d
           </select>
         </div>
         <Field label="Date employed" name="dateEmployed" type="date" />
+        <Field label="Resumption time (optional)" name="workStart" type="time" />
+        <Field label="Closing time (optional)" name="workEnd" type="time" />
       </div>
+      <p className="text-xs text-muted-foreground">
+        Leave resumption/closing time blank to use the general attendance settings for this employee.
+      </p>
 
       <Button type="submit" disabled={pending}>
         {pending ? "Creating…" : "Create Employee"}

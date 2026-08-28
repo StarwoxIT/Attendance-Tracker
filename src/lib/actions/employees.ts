@@ -21,6 +21,8 @@ async function nextEmployeeNumber(): Promise<string> {
   return `EMP-${String(count + 1).padStart(4, "0")}`;
 }
 
+const workTime = z.string().regex(/^\d{2}:\d{2}$/, "Use HH:mm").optional().or(z.literal(""));
+
 const employeeSchema = z.object({
   firstName: z.string().min(1).max(80),
   middleName: z.string().max(80).optional().or(z.literal("")),
@@ -31,6 +33,10 @@ const employeeSchema = z.object({
   jobTitle: z.string().max(120).optional().or(z.literal("")),
   officeId: z.string().min(1),
   dateEmployed: z.string().optional().or(z.literal("")),
+  // Optional per-employee schedule override — left blank, the employee follows the
+  // general attendance settings' workStart/workEnd.
+  workStart: workTime,
+  workEnd: workTime,
 });
 
 export interface EmployeeFormState {
@@ -66,6 +72,8 @@ export async function createEmployeeAction(
           jobTitle: parsed.data.jobTitle || null,
           officeId: parsed.data.officeId,
           dateEmployed: parsed.data.dateEmployed ? new Date(parsed.data.dateEmployed) : null,
+          workStart: parsed.data.workStart || null,
+          workEnd: parsed.data.workEnd || null,
         },
       });
 
@@ -108,6 +116,8 @@ export async function updateEmployeeAction(employeeId: string, formData: FormDat
       jobTitle: parsed.data.jobTitle || null,
       officeId: parsed.data.officeId || before.officeId,
       dateEmployed: parsed.data.dateEmployed ? new Date(parsed.data.dateEmployed) : null,
+      workStart: parsed.data.workStart || null,
+      workEnd: parsed.data.workEnd || null,
     },
   });
 

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requirePermission } from "@/lib/auth/guard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { Pagination, ADMIN_PAGE_SIZE } from "@/components/admin/Pagination";
 import { ReviewDeletionForm } from "./ReviewDeletionForm";
 
 export const dynamic = "force-dynamic";
@@ -16,18 +17,25 @@ const STATUS_STYLES: Record<string, string> = {
 export default async function DeletionRequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ show?: string }>;
+  searchParams: Promise<{ show?: string; page?: string }>;
 }) {
   await requirePermission("deletionRequests", "view");
-  const { show } = await searchParams;
+  const { show, page } = await searchParams;
   const showResolved = show === "resolved";
+  const pageNum = Math.max(1, Number(page) || 1);
+  const pageSize = ADMIN_PAGE_SIZE;
+  const where = { status: showResolved ? { not: "PENDING" as const } : "PENDING" as const };
 
-  const requests = await prisma.employeeDeletionRequest.findMany({
-    where: { status: showResolved ? { not: "PENDING" } : "PENDING" },
-    include: { employee: true, requestedBy: true, reviewedBy: true },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+  const [requests, total] = await Promise.all([
+    prisma.employeeDeletionRequest.findMany({
+      where,
+      include: { employee: true, requestedBy: true, reviewedBy: true },
+      orderBy: { createdAt: "desc" },
+      skip: (pageNum - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.employeeDeletionRequest.count({ where }),
+  ]);
 
   return (
     <>
@@ -94,6 +102,14 @@ export default async function DeletionRequestsPage({
             </Card>
           ) : null}
         </div>
+
+        <Pagination
+          basePath="/admin/deletion-requests"
+          searchParams={{ show }}
+          page={pageNum}
+          pageSize={pageSize}
+          total={total}
+        />
       </div>
     </>
   );

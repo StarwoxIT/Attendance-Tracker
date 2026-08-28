@@ -2,28 +2,36 @@ import { prisma } from "@/lib/db/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { reviewDeviceFlagAction } from "@/lib/actions/deviceFlags";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { Pagination, ADMIN_PAGE_SIZE } from "@/components/admin/Pagination";
 
 export const dynamic = "force-dynamic";
 
 export default async function DeviceFlagsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ show?: string }>;
+  searchParams: Promise<{ show?: string; page?: string }>;
 }) {
-  const { show } = await searchParams;
+  const { show, page } = await searchParams;
   const showReviewed = show === "reviewed";
+  const pageNum = Math.max(1, Number(page) || 1);
+  const pageSize = ADMIN_PAGE_SIZE;
+  const where = { reviewed: showReviewed };
 
-  const flags = await prisma.attendanceDeviceFlag.findMany({
-    where: { reviewed: showReviewed },
-    include: {
-      employee: true,
-      previousEmployee: true,
-      attendanceRecord: { include: { office: true } },
-      reviewedBy: true,
-    },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+  const [flags, total] = await Promise.all([
+    prisma.attendanceDeviceFlag.findMany({
+      where,
+      include: {
+        employee: true,
+        previousEmployee: true,
+        attendanceRecord: { include: { office: true } },
+        reviewedBy: true,
+      },
+      orderBy: { createdAt: "desc" },
+      skip: (pageNum - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.attendanceDeviceFlag.count({ where }),
+  ]);
 
   return (
     <>
@@ -102,6 +110,14 @@ export default async function DeviceFlagsPage({
           </Card>
         ) : null}
       </div>
+
+      <Pagination
+        basePath="/admin/device-flags"
+        searchParams={{ show }}
+        page={pageNum}
+        pageSize={pageSize}
+        total={total}
+      />
       </div>
     </>
   );

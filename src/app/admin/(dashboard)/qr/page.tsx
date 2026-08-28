@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAttendanceSettings } from "@/lib/attendance/settings";
 import { formatInTimeZone } from "date-fns-tz";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { Pagination, ADMIN_PAGE_SIZE } from "@/components/admin/Pagination";
 import { GenerateQrForm, DeactivateQrButton } from "./QrActions";
 
 export const dynamic = "force-dynamic";
@@ -24,14 +25,20 @@ function missingArtifacts(qr: { pdfUrl: string | null; pngUrl: string | null }):
   return !qr.pdfUrl && !qr.pngUrl;
 }
 
-export default async function QrPage() {
-  const [offices, qrCodes, settings] = await Promise.all([
+export default async function QrPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
+  const { page } = await searchParams;
+  const pageNum = Math.max(1, Number(page) || 1);
+  const pageSize = ADMIN_PAGE_SIZE;
+
+  const [offices, qrCodes, total, settings] = await Promise.all([
     prisma.office.findMany({ orderBy: { name: "asc" } }),
     prisma.attendanceQrCode.findMany({
       include: { office: true, generatedBy: true },
       orderBy: { createdAt: "desc" },
-      take: 30,
+      skip: (pageNum - 1) * pageSize,
+      take: pageSize,
     }),
+    prisma.attendanceQrCode.count(),
     getAttendanceSettings(),
   ]);
 
@@ -167,6 +174,8 @@ export default async function QrPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination basePath="/admin/qr" searchParams={{}} page={pageNum} pageSize={pageSize} total={total} />
       </div>
     </>
   );

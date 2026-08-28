@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { Pagination, ADMIN_PAGE_SIZE } from "@/components/admin/Pagination";
 import type { EmploymentStatus, Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -17,9 +18,11 @@ const STATUS_STYLES: Record<EmploymentStatus, string> = {
 export default async function EmployeesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; page?: string }>;
 }) {
-  const { q, status } = await searchParams;
+  const { q, status, page } = await searchParams;
+  const pageNum = Math.max(1, Number(page) || 1);
+  const pageSize = ADMIN_PAGE_SIZE;
 
   const where: Prisma.EmployeeWhereInput = { isDeleted: false };
   if (status) where.employmentStatus = status as EmploymentStatus;
@@ -32,12 +35,16 @@ export default async function EmployeesPage({
     ];
   }
 
-  const employees = await prisma.employee.findMany({
-    where,
-    include: { office: true, department: true },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-  });
+  const [employees, total] = await Promise.all([
+    prisma.employee.findMany({
+      where,
+      include: { office: true, department: true },
+      orderBy: { createdAt: "desc" },
+      skip: (pageNum - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.employee.count({ where }),
+  ]);
 
   return (
     <>
@@ -144,6 +151,14 @@ export default async function EmployeesPage({
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        basePath="/admin/employees"
+        searchParams={{ q, status }}
+        page={pageNum}
+        pageSize={pageSize}
+        total={total}
+      />
       </div>
     </>
   );

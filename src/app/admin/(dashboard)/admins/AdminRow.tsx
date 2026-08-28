@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { Button } from "@/components/ui/button";
-import { setAdminActiveAction } from "@/lib/actions/admins";
+import { setAdminActiveAction, deleteAdminAction } from "@/lib/actions/admins";
 import { toast, toastError } from "@/hooks/use-toast";
 import type { User } from "@prisma/client";
 
@@ -29,6 +29,28 @@ export function AdminActiveToggle({ admin }: { admin: User }) {
   );
 }
 
+export function DeleteAdminButton({ admin }: { admin: User }) {
+  const [pending, startTransition] = useTransition();
+
+  function submit() {
+    if (!window.confirm(`Permanently delete ${admin.fullName}'s administrator account? This cannot be undone.`)) return;
+    startTransition(async () => {
+      try {
+        await deleteAdminAction(admin.id);
+        toast({ title: "Administrator deleted", variant: "success" });
+      } catch (err) {
+        toastError(err, "Couldn't delete administrator");
+      }
+    });
+  }
+
+  return (
+    <Button size="sm" variant="outline" disabled={pending} onClick={submit} className="text-red-600 hover:bg-red-50">
+      Delete
+    </Button>
+  );
+}
+
 export function AdminRow({ admin, isSelf }: { admin: User; isSelf: boolean }) {
   return (
     <tr className="border-b last:border-0">
@@ -42,7 +64,14 @@ export function AdminRow({ admin, isSelf }: { admin: User; isSelf: boolean }) {
       </td>
       <td className="px-4 py-2">{admin.lastLoginAt ? new Date(admin.lastLoginAt).toLocaleString() : "Never"}</td>
       <td className="px-4 py-2 text-right">
-        {!isSelf ? <AdminActiveToggle admin={admin} /> : <span className="text-xs text-muted-foreground">You</span>}
+        {!isSelf ? (
+          <div className="flex justify-end gap-2">
+            <AdminActiveToggle admin={admin} />
+            {admin.role !== "SUPER_ADMIN" ? <DeleteAdminButton admin={admin} /> : null}
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">You</span>
+        )}
       </td>
     </tr>
   );

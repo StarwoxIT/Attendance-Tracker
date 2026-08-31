@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentUser } from "@/lib/auth/session";
 import { NewAdminForm } from "./NewAdminForm";
-import { AdminRow, AdminActiveToggle } from "./AdminRow";
+import { AdminRow, AdminActiveToggle, DeleteAdminButton } from "./AdminRow";
 import { PageHeader } from "@/components/admin/PageHeader";
 
 export const dynamic = "force-dynamic";
@@ -45,8 +45,9 @@ export default async function AdminsPage() {
               {a.role.replace("_", " ")} · Last login: {a.lastLoginAt ? new Date(a.lastLoginAt).toLocaleString() : "Never"}
             </p>
             {a.id !== self?.id ? (
-              <div className="mt-3">
+              <div className="mt-3 flex gap-2">
                 <AdminActiveToggle admin={a} />
+                {a.role !== "SUPER_ADMIN" ? <DeleteAdminButton admin={a} /> : null}
               </div>
             ) : null}
           </div>

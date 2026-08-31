@@ -75,3 +75,40 @@ export async function setAdminActiveAction(userId: string, isActive: boolean): P
   });
   revalidatePath("/admin/admins");
 }
+
+/**
+ * Super Admin accounts can never be deleted this way (only disabled) — the app
+ * always needs at least one Super Admin able to recover access, and this avoids a
+ * super admin accidentally locking the org out by deleting the last one. Any other
+ * admin category (ADMIN, HR, VIEWER) can be removed outright.
+ */
+export async function deleteAdminAction(userId: string): Promise<void> {
+  const actor = await requirePermission("admins", "manage");
+  if (actor.id === userId) throw new Error("You cannot delete your own account.");
+
+  const target = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
+  if (target.role === "SUPER_ADMIN") {
+    throw new Error("Super Admin accounts can't be deleted — disable the account instead.");
+  }
+
+  try {
+    await prisma.user.delete({ where: { id: userId } });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2003") {
+      throw new Error(
+        "Can't delete — this admin has historical activity (e.g. QR codes generated or an employee deletion request) that must be kept for audit purposes. Disable the account instead to revoke access without losing history."
+      );
+    }
+    throw err;
+  }
+
+  await recordAuditLog({
+    userId: actor.id,
+    action: "admin.deleted",
+    resource: "user",
+    resourceId: userId,
+    oldValue: { email: target.email, role: target.role },
+    ipAddress: await actorIp(),
+  });
+  revalidatePath("/admin/admins");
+}

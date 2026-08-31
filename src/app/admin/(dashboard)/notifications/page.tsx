@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { requirePermission } from "@/lib/auth/guard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { Pagination, ADMIN_PAGE_SIZE } from "@/components/admin/Pagination";
 import { MarkAllReadButton, MarkReadButton } from "./NotificationActions";
 
 export const dynamic = "force-dynamic";
@@ -11,16 +12,27 @@ const TYPE_LABELS: Record<string, string> = {
   EMPLOYEE_DELETION_REQUESTED: "Deletion request",
 };
 
-export default async function NotificationsPage() {
+export default async function NotificationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   const user = await requirePermission("notifications", "view");
+  const { page } = await searchParams;
+  const pageNum = Math.max(1, Number(page) || 1);
+  const pageSize = ADMIN_PAGE_SIZE;
+  const where = { targetRole: user.role };
 
-  const notifications = await prisma.notification.findMany({
-    where: { targetRole: user.role },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
-
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const [notifications, total, unreadCount] = await Promise.all([
+    prisma.notification.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (pageNum - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.notification.count({ where }),
+    prisma.notification.count({ where: { ...where, read: false } }),
+  ]);
 
   return (
     <>
@@ -53,6 +65,7 @@ export default async function NotificationsPage() {
             </CardHeader>
           </Card>
         ) : null}
+        <Pagination basePath="/admin/notifications" searchParams={{}} page={pageNum} pageSize={pageSize} total={total} />
       </div>
     </>
   );

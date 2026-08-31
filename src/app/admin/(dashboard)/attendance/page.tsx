@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatInTimeZone } from "date-fns-tz";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { Pagination, ADMIN_PAGE_SIZE } from "@/components/admin/Pagination";
 import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export default async function AttendanceListPage({
 }) {
   const { from, to, q, status, flagged, page } = await searchParams;
   const pageNum = Math.max(1, Number(page) || 1);
-  const pageSize = 30;
+  const pageSize = ADMIN_PAGE_SIZE;
 
   const where: Prisma.AttendanceRecordWhereInput = {};
   if (from || to) {
@@ -234,23 +235,13 @@ export default async function AttendanceListPage({
         </table>
       </div>
 
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <span>
-          Page {pageNum} of {Math.max(1, Math.ceil(total / pageSize))} ({total} records)
-        </span>
-        <div className="flex gap-2">
-          {pageNum > 1 ? (
-            <Link className="hover:underline" href={`?page=${pageNum - 1}`}>
-              Previous
-            </Link>
-          ) : null}
-          {pageNum * pageSize < total ? (
-            <Link className="hover:underline" href={`?page=${pageNum + 1}`}>
-              Next
-            </Link>
-          ) : null}
-        </div>
-      </div>
+      <Pagination
+        basePath="/admin/attendance"
+        searchParams={{ from, to, q, status, flagged }}
+        page={pageNum}
+        pageSize={pageSize}
+        total={total}
+      />
       </div>
     </>
   );

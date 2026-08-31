@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import type { Prisma } from "@prisma/client";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { Pagination, ADMIN_PAGE_SIZE } from "@/components/admin/Pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,7 @@ export default async function AuditLogPage({
 }) {
   const { action, resource, page } = await searchParams;
   const pageNum = Math.max(1, Number(page) || 1);
-  const pageSize = 50;
+  const pageSize = ADMIN_PAGE_SIZE;
 
   const where: Prisma.AuditLogWhereInput = {};
   if (action) where.action = { contains: action, mode: "insensitive" };
@@ -104,9 +105,13 @@ export default async function AuditLogPage({
           </tbody>
         </table>
       </div>
-      <p className="text-sm text-muted-foreground">
-        {total} total entries · page {pageNum}
-      </p>
+      <Pagination
+        basePath="/admin/audit-log"
+        searchParams={{ action, resource }}
+        page={pageNum}
+        pageSize={pageSize}
+        total={total}
+      />
       </div>
     </>
   );

@@ -129,6 +129,10 @@ model Employee {
   dateEmployed     DateTime?
   profilePhotoUrl  String?
   officeId         String
+  // Optional per-employee override of the general "HH:mm" work schedule — falls
+  // back to AttendanceSettings.workStart/workEnd (see attendance/rules.ts) when null.
+  workStart        String?
+  workEnd          String?
   // Soft-delete: hidden from all active lists and clock-in lookup once true, but the
   // row and its attendance history are preserved for reporting/audit and can be
   // restored. See EmployeeDeletionRequest for the approval workflow that sets this.

@@ -72,6 +72,11 @@ export function EditEmployeeForm({
         type="date"
         defaultValue={employee.dateEmployed ? employee.dateEmployed.toISOString().slice(0, 10) : ""}
       />
+      <Field label="Resumption time (optional)" name="workStart" type="time" defaultValue={employee.workStart ?? ""} />
+      <Field label="Closing time (optional)" name="workEnd" type="time" defaultValue={employee.workEnd ?? ""} />
+      <p className="col-span-2 -mt-2 text-xs text-muted-foreground">
+        Leave resumption/closing time blank to use the general attendance settings for this employee.
+      </p>
       <div className="col-span-2">
         <Button type="submit" disabled={pending}>
           {pending ? "Saving…" : "Save changes"}

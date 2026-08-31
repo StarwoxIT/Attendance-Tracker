@@ -53,7 +53,7 @@ describeIfDb("recordAttendance — integration", () => {
     await prisma.rateLimitBucket.deleteMany();
   });
 
-  async function makeEmployee() {
+  async function makeEmployee(overrides: { workStart?: string; workEnd?: string } = {}) {
     const { plaintext, lookup } = createAttendanceIdCandidate();
     const employee = await prisma.employee.create({
       data: {
@@ -62,6 +62,7 @@ describeIfDb("recordAttendance — integration", () => {
         firstName: "Test",
         lastName: "Employee",
         officeId,
+        ...overrides,
       },
     });
     return { employee, attendanceId: plaintext };
@@ -280,6 +281,38 @@ describeIfDb("recordAttendance — integration", () => {
         where: { OR: [{ employeeId: a.employee.id }, { employeeId: b.employee.id }] },
       });
       expect(flags).toBe(0);
+    });
+
+    it("classifies clock-in against the employee's own workStart override, not the general settings", async () => {
+      // General settings workStart is 09:00 (already passed most days); this
+      // employee's own override is an hour from now, so clocking in "now" must
+      // register as EARLY relative to their schedule, not ON_TIME/LATE relative
+      // to the general one.
+      const futureStart = formatInTimeZone(new Date(Date.now() + 60 * 60 * 1000), TZ, "HH:mm");
+      const { attendanceId } = await makeEmployee({ workStart: futureStart });
+
+      const result = await recordAttendance({ attendanceIdRaw: attendanceId, sourceIp: "102.89.0.1", userAgent: "vitest" });
+      expect(result.ok).toBe(true);
+      if (result.ok && result.action === "CLOCK_IN") {
+        expect(result.record.clockInStatus).toBe("EARLY");
+      }
+    });
+
+    it("classifies clock-out against the employee's own workEnd override, not the general settings", async () => {
+      // This employee's own scheduled end was an hour ago, so clocking out now is
+      // ON_TIME for them even though the general workEnd (17:00) may still be ahead.
+      const pastEnd = formatInTimeZone(new Date(Date.now() - 60 * 60 * 1000), TZ, "HH:mm");
+      const { attendanceId } = await makeEmployee({ workEnd: pastEnd });
+      const input = { attendanceIdRaw: attendanceId, sourceIp: "102.89.0.1", userAgent: "vitest" };
+
+      const clockIn = await recordAttendance(input);
+      expect(clockIn.ok).toBe(true);
+
+      const clockOut = await recordAttendance(input);
+      expect(clockOut.ok).toBe(true);
+      if (clockOut.ok && clockOut.action === "CLOCK_OUT") {
+        expect(clockOut.record.clockOutStatus).toBe("ON_TIME");
+      }
     });
   });
 

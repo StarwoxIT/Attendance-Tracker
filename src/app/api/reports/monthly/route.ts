@@ -28,27 +28,27 @@ export async function GET(request: NextRequest) {
 
   const rows = await fetchMonthlyReportRows(month, officeId);
 
-  if (format === "xlsx" || format === "pdf") {
-    const settings = await getAttendanceSettings();
-    const range = monthRange(month);
-    const scores = await fetchAttendanceScores({
-      from: new Date(`${range.from}T00:00:00Z`),
-      to: new Date(`${range.to}T00:00:00Z`),
-      officeId,
-      weights: { earlyPoints: settings.earlyPoints, onTimePoints: settings.onTimePoints, latePoints: settings.latePoints },
+  const settings = await getAttendanceSettings();
+  const range = monthRange(month);
+  const scores = await fetchAttendanceScores({
+    from: new Date(`${range.from}T00:00:00Z`),
+    to: new Date(`${range.to}T00:00:00Z`),
+    officeId,
+    weights: { earlyPoints: settings.earlyPoints, onTimePoints: settings.onTimePoints, latePoints: settings.latePoints },
+  });
+  const summaryLines = summaryToLines(buildReportSummary(scores));
+
+  if (format === "xlsx") {
+    const buffer = await rowsToExcelBuffer(rows, "Monthly Attendance", summaryLines);
+    return new NextResponse(new Uint8Array(buffer), {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": "attachment; filename=monthly-attendance.xlsx",
+      },
     });
-    const summaryLines = summaryToLines(buildReportSummary(scores));
+  }
 
-    if (format === "xlsx") {
-      const buffer = await rowsToExcelBuffer(rows, "Monthly Attendance", summaryLines);
-      return new NextResponse(new Uint8Array(buffer), {
-        headers: {
-          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": "attachment; filename=monthly-attendance.xlsx",
-        },
-      });
-    }
-
+  if (format === "pdf") {
     const company = await getCompanySettings();
     const buffer = await generateReportPdf({
       companyName: company.companyName,
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const csv = rowsToCsv(rows);
+  const csv = rowsToCsv(rows, summaryLines);
   return new NextResponse(csv, {
     headers: { "Content-Type": "text/csv", "Content-Disposition": "attachment; filename=monthly-attendance.csv" },
   });

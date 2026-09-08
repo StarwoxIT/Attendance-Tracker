@@ -37,28 +37,28 @@ export async function GET(request: NextRequest) {
     settings.timezone
   );
 
-  if (format === "xlsx" || format === "pdf") {
-    const from = searchParams.get("from");
-    const to = searchParams.get("to");
-    const scores = await fetchAttendanceScores({
-      from: from ? new Date(`${from}T00:00:00Z`) : undefined,
-      to: to ? new Date(`${to}T00:00:00Z`) : undefined,
-      officeId: searchParams.get("officeId") ?? undefined,
-      departmentId: searchParams.get("departmentId") ?? undefined,
-      weights: { earlyPoints: settings.earlyPoints, onTimePoints: settings.onTimePoints, latePoints: settings.latePoints },
+  const from = searchParams.get("from");
+  const to = searchParams.get("to");
+  const scores = await fetchAttendanceScores({
+    from: from ? new Date(`${from}T00:00:00Z`) : undefined,
+    to: to ? new Date(`${to}T00:00:00Z`) : undefined,
+    officeId: searchParams.get("officeId") ?? undefined,
+    departmentId: searchParams.get("departmentId") ?? undefined,
+    weights: { earlyPoints: settings.earlyPoints, onTimePoints: settings.onTimePoints, latePoints: settings.latePoints },
+  });
+  const summaryLines = summaryToLines(buildReportSummary(scores));
+
+  if (format === "xlsx") {
+    const buffer = await rowsToExcelBuffer(rows, "Daily Attendance", summaryLines);
+    return new NextResponse(new Uint8Array(buffer), {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": "attachment; filename=daily-attendance.xlsx",
+      },
     });
-    const summaryLines = summaryToLines(buildReportSummary(scores));
+  }
 
-    if (format === "xlsx") {
-      const buffer = await rowsToExcelBuffer(rows, "Daily Attendance", summaryLines);
-      return new NextResponse(new Uint8Array(buffer), {
-        headers: {
-          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": "attachment; filename=daily-attendance.xlsx",
-        },
-      });
-    }
-
+  if (format === "pdf") {
     const company = await getCompanySettings();
     const buffer = await generateReportPdf({
       companyName: company.companyName,
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const csv = rowsToCsv(rows);
+  const csv = rowsToCsv(rows, summaryLines);
   return new NextResponse(csv, {
     headers: { "Content-Type": "text/csv", "Content-Disposition": "attachment; filename=daily-attendance.csv" },
   });

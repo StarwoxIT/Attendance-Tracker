@@ -8,6 +8,9 @@ const styles = StyleSheet.create({
   companyName: { fontSize: 14, fontWeight: 700 },
   reportTitle: { fontSize: 11, color: "#444444", marginTop: 2 },
   meta: { fontSize: 8, color: "#666666", marginTop: 2 },
+  summary: { marginTop: 14, padding: 8, backgroundColor: "#f8fafc", borderWidth: 1, borderColor: "#e2e8f0", borderRadius: 3 },
+  summaryTitle: { fontSize: 9, fontWeight: 700, marginBottom: 4 },
+  summaryLine: { fontSize: 8, color: "#333333", marginTop: 2 },
   table: { display: "flex", flexDirection: "column", marginTop: 12, borderWidth: 1, borderColor: "#dddddd" },
   row: { flexDirection: "row", borderBottomWidth: 1, borderColor: "#eeeeee" },
   headerRow: { flexDirection: "row", backgroundColor: "#f1f5f9", fontWeight: 700 },
@@ -21,11 +24,22 @@ interface ReportPdfProps {
   subtitle: string;
   generatedBy: string;
   generatedAt: string;
+  summaryLines?: string[];
   headers: string[];
   rows: string[][];
 }
 
-function ReportPdfDocument({ companyName, logoDataUrl, title, subtitle, generatedBy, generatedAt, headers, rows }: ReportPdfProps) {
+function ReportPdfDocument({
+  companyName,
+  logoDataUrl,
+  title,
+  subtitle,
+  generatedBy,
+  generatedAt,
+  summaryLines,
+  headers,
+  rows,
+}: ReportPdfProps) {
   return (
     <Document>
       <Page size="A4" orientation="landscape" style={styles.page}>
@@ -40,6 +54,17 @@ function ReportPdfDocument({ companyName, logoDataUrl, title, subtitle, generate
             </Text>
           </View>
         </View>
+
+        {summaryLines?.length ? (
+          <View style={styles.summary}>
+            <Text style={styles.summaryTitle}>Summary</Text>
+            {summaryLines.map((line, i) => (
+              <Text key={i} style={styles.summaryLine}>
+                {line}
+              </Text>
+            ))}
+          </View>
+        ) : null}
 
         <View style={styles.table}>
           <View style={styles.headerRow}>
@@ -82,6 +107,7 @@ export interface GenerateReportPdfParams {
   title: string;
   subtitle: string;
   generatedBy: string;
+  summaryLines?: string[];
   headers: string[];
   rows: string[][];
 }
@@ -94,6 +120,7 @@ export async function generateReportPdf(params: GenerateReportPdfParams): Promis
       logoDataUrl={logoDataUrl}
       title={params.title}
       subtitle={params.subtitle}
+      summaryLines={params.summaryLines}
       generatedBy={params.generatedBy}
       generatedAt={new Date().toLocaleString()}
       headers={params.headers}

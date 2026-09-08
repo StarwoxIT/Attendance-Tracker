@@ -17,6 +17,7 @@ export const PERMISSIONS = {
   attendance: { view: ["SUPER_ADMIN", "ADMIN", "HR", "VIEWER"], manage: ["SUPER_ADMIN", "ADMIN", "HR"] },
   deviceFlags: { view: ["SUPER_ADMIN", "ADMIN", "HR"], manage: ["SUPER_ADMIN", "ADMIN", "HR"] },
   reports: { view: ["SUPER_ADMIN", "ADMIN", "HR", "VIEWER"] },
+  analytics: { view: ["SUPER_ADMIN", "ADMIN"] },
   qr: { view: ["SUPER_ADMIN", "ADMIN", "HR", "VIEWER"], manage: ["SUPER_ADMIN", "ADMIN"] },
   offices: { view: ["SUPER_ADMIN", "ADMIN", "HR", "VIEWER"], manage: ["SUPER_ADMIN", "ADMIN"] },
   network: { view: ["SUPER_ADMIN", "ADMIN"], manage: ["SUPER_ADMIN", "ADMIN"] },

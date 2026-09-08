@@ -76,6 +76,26 @@ export function AttendanceSettingsForm({ settings }: { settings: AttendanceSetti
         </label>
       </div>
 
+      <div className="col-span-full border-t pt-4">
+        <p className="text-sm font-medium">Performance score weights</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Points awarded per day on the Analytics dashboard and in report summaries. Higher points for earlier
+          arrival rewards employees who are consistently early over those who are only on time or late.
+        </p>
+      </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium">Early (points/day)</label>
+        <Input type="number" name="earlyPoints" defaultValue={settings.earlyPoints} min={0} max={100} />
+      </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium">On time (points/day)</label>
+        <Input type="number" name="onTimePoints" defaultValue={settings.onTimePoints} min={0} max={100} />
+      </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium">Late (points/day)</label>
+        <Input type="number" name="latePoints" defaultValue={settings.latePoints} min={0} max={100} />
+      </div>
+
       <div className="col-span-full">
         <Button type="submit" disabled={pending}>
           {pending ? "Saving…" : "Save attendance settings"}

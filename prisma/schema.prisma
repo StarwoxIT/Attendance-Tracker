@@ -510,6 +510,11 @@ model AttendanceSettings {
   networkStaleThresholdMinutes    Int      @default(30)
   kioskResetSeconds          Int            @default(5)
   crossOfficeAttendance      Boolean        @default(false)
+  // Points awarded per attendance day for the analytics performance score (see
+  // lib/analytics/score.ts) — higher for earlier arrival, encouraging early > on-time > late.
+  earlyPoints                Int            @default(5)
+  onTimePoints               Int            @default(3)
+  latePoints                 Int            @default(0)
   updatedAt                 DateTime       @updatedAt
 
   @@map("attendance_settings")

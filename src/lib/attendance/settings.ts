@@ -16,6 +16,9 @@ const DEFAULTS: Omit<AttendanceSettings, "id" | "updatedAt"> = {
   networkStaleThresholdMinutes: 30,
   kioskResetSeconds: 5,
   crossOfficeAttendance: false,
+  earlyPoints: 5,
+  onTimePoints: 3,
+  latePoints: 0,
 };
 
 export async function getAttendanceSettings(): Promise<AttendanceSettings> {

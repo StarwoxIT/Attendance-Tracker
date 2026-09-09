@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, CartesianGrid, Cell } from "recharts";
 import type { EmployeeAttendanceScore } from "@/lib/analytics/query";
@@ -22,24 +22,53 @@ interface HoverState {
   clientY: number;
 }
 
-/** A chart bar's own onMouseEnter/Move only ever fires with the native DOM event
- * (no chart-relative coordinate), which is exactly what we want here — the
- * tooltip below is positioned in viewport space via a portal to <body>, so it
- * can never be clipped by this chart's horizontally-scrolling container,
- * unlike recharts' built-in <Tooltip>, which renders inside that container. */
+/**
+ * Bars respond to both hover (desktop mouse) and tap (touch): a tap fires
+ * onClick reliably on every mobile browser, unlike relying on the legacy
+ * mouseover/mousemove compatibility events browsers sometimes synthesize after
+ * a touch — those are inconsistent and, worse, never followed by a matching
+ * mouseleave, so a tapped bar's tooltip would otherwise stay stuck on screen
+ * forever. Tapping the same bar again, or anywhere outside the chart, closes it.
+ *
+ * The tooltip itself is portaled to <body> and positioned from the raw
+ * viewport coordinates (not chart-relative), so it can never be clipped by
+ * this chart's horizontally-scrolling container the way recharts' built-in
+ * <Tooltip> would be for bars near either edge.
+ */
 export function AnalyticsChart({ data }: { data: EmployeeAttendanceScore[] }) {
   const [hover, setHover] = useState<HoverState | null>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
   const width = Math.max(MIN_CHART_WIDTH_PX, data.length * BAR_WIDTH_PX);
 
   function trackHover(rowData: EmployeeAttendanceScore, event: React.MouseEvent) {
     setHover({ data: rowData, clientX: event.clientX, clientY: event.clientY });
   }
 
+  function handleTap(rowData: EmployeeAttendanceScore, event: React.MouseEvent) {
+    setHover((current) => (current?.data.employeeId === rowData.employeeId ? null : { data: rowData, clientX: event.clientX, clientY: event.clientY }));
+  }
+
+  // Tapping anywhere outside the chart dismisses an open (tapped) tooltip. Clicks
+  // inside the chart are left alone — a different bar's own onClick handles that.
+  useEffect(() => {
+    if (!hover) return;
+    function handleOutside(event: MouseEvent | TouchEvent) {
+      if (chartRef.current?.contains(event.target as Node)) return;
+      setHover(null);
+    }
+    document.addEventListener("click", handleOutside);
+    document.addEventListener("touchstart", handleOutside);
+    return () => {
+      document.removeEventListener("click", handleOutside);
+      document.removeEventListener("touchstart", handleOutside);
+    };
+  }, [hover]);
+
   const flipLeft = hover ? hover.clientX + TOOLTIP_OFFSET_PX + TOOLTIP_WIDTH_PX > window.innerWidth : false;
   const flipUp = hover ? hover.clientY + TOOLTIP_OFFSET_PX + 90 > window.innerHeight : false;
 
   return (
-    <div className="overflow-x-auto">
+    <div ref={chartRef} className="overflow-x-auto">
       <div style={{ width, height: 360 }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 8, right: 8, bottom: 64, left: 8 }}>
@@ -61,6 +90,7 @@ export function AnalyticsChart({ data }: { data: EmployeeAttendanceScore[] }) {
                   fill={scoreColor(d.percentage)}
                   onMouseEnter={(e: React.MouseEvent) => trackHover(d, e)}
                   onMouseMove={(e: React.MouseEvent) => trackHover(d, e)}
+                  onClick={(e: React.MouseEvent) => handleTap(d, e)}
                 />
               ))}
             </Bar>

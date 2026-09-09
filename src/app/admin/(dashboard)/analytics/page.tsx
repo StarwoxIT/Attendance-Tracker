@@ -6,6 +6,7 @@ import { getAttendanceSettings } from "@/lib/attendance/settings";
 import { fetchAttendanceScores } from "@/lib/analytics/query";
 import { todayRange, thisWeekRange, thisMonthRange, type DateRangeStrings } from "@/lib/analytics/dateRanges";
 import { AnalyticsChart } from "./AnalyticsChart";
+import { FullScreenToggle } from "./FullScreenToggle";
 
 export const dynamic = "force-dynamic";
 
@@ -52,10 +53,15 @@ export default async function AnalyticsPage({
   return (
     <>
       <PageHeader>
-        <h1 className="text-2xl font-bold">Analytics</h1>
-        <p className="text-sm text-muted-foreground">
-          Attendance performance by employee for the selected period. Score weights are set in Settings.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h1 className="text-2xl font-bold">Analytics</h1>
+            <p className="text-sm text-muted-foreground">
+              Attendance performance by employee for the selected period. Score weights are set in Settings.
+            </p>
+          </div>
+          <FullScreenToggle />
+        </div>
       </PageHeader>
       <div className="space-y-6 px-4 py-6 sm:px-6 md:px-8">
         <div className="flex flex-wrap items-end justify-between gap-4">

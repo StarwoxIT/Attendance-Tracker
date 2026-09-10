@@ -18,6 +18,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/admin/offices", label: "Offices & Network", resource: "offices" },
   { href: "/admin/holidays", label: "Holidays", resource: "settings" },
   { href: "/admin/reports", label: "Reports", resource: "reports" },
+  { href: "/admin/analytics", label: "Analytics", resource: "analytics" },
   { href: "/admin/admins", label: "Administrators", resource: "admins" },
   { href: "/admin/audit-log", label: "Audit Log", resource: "auditLog" },
   { href: "/admin/settings", label: "Settings", resource: "settings" },

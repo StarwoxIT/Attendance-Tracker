@@ -99,6 +99,9 @@ const attendanceSettingsSchema = z.object({
   networkStaleThresholdMinutes: z.coerce.number().int().min(1).max(1440),
   kioskResetSeconds: z.coerce.number().int().min(2).max(60),
   crossOfficeAttendance: z.coerce.boolean(),
+  earlyPoints: z.coerce.number().int().min(0).max(100),
+  onTimePoints: z.coerce.number().int().min(0).max(100),
+  latePoints: z.coerce.number().int().min(0).max(100),
 });
 
 export async function updateAttendanceSettingsAction(formData: FormData): Promise<void> {

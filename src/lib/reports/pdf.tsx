@@ -89,7 +89,7 @@ function ReportPdfDocument({
   );
 }
 
-async function fetchAsDataUrl(url: string): Promise<string | null> {
+export async function fetchAsDataUrl(url: string): Promise<string | null> {
   try {
     const res = await fetch(url);
     if (!res.ok) return null;

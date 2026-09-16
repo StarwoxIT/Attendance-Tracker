@@ -30,12 +30,22 @@ export default async function AnalyticsPage({
     from: new Date(`${from}T00:00:00Z`),
     to: new Date(`${to}T00:00:00Z`),
     officeId: officeId || undefined,
-    weights: { earlyPoints: settings.earlyPoints, onTimePoints: settings.onTimePoints, latePoints: settings.latePoints },
+    weights: {
+      earlyPoints: settings.earlyPoints,
+      onTimePoints: settings.onTimePoints,
+      latePoints: settings.latePoints,
+      missedClockOutPoints: settings.missedClockOutPoints,
+    },
   });
 
   const totals = scores.reduce(
-    (acc, s) => ({ early: acc.early + s.early, onTime: acc.onTime + s.onTime, late: acc.late + s.late }),
-    { early: 0, onTime: 0, late: 0 }
+    (acc, s) => ({
+      early: acc.early + s.early,
+      onTime: acc.onTime + s.onTime,
+      late: acc.late + s.late,
+      missedClockOut: acc.missedClockOut + s.missedClockOut,
+    }),
+    { early: 0, onTime: 0, late: 0, missedClockOut: 0 }
   );
 
   const quickRanges = {
@@ -48,6 +58,12 @@ export default async function AnalyticsPage({
     const params = new URLSearchParams({ from: range.from, to: range.to });
     if (officeId) params.set("officeId", officeId);
     return `/admin/analytics?${params.toString()}`;
+  }
+
+  function exportHref(format: "xlsx" | "pdf"): string {
+    const params = new URLSearchParams({ from, to, format });
+    if (officeId) params.set("officeId", officeId);
+    return `/api/analytics/export?${params.toString()}`;
   }
 
   return (
@@ -120,12 +136,28 @@ export default async function AnalyticsPage({
               Apply
             </button>
           </form>
+
+          <div className="flex gap-2">
+            <a
+              href={exportHref("xlsx")}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm font-medium leading-9 hover:bg-muted"
+            >
+              Export Excel
+            </a>
+            <a
+              href={exportHref("pdf")}
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm font-medium leading-9 hover:bg-muted"
+            >
+              Export PDF
+            </a>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryCard label="Early arrivals" value={totals.early} className="border-blue-200 bg-blue-50 text-blue-800" />
           <SummaryCard label="On-time arrivals" value={totals.onTime} className="border-green-200 bg-green-50 text-green-800" />
           <SummaryCard label="Late arrivals" value={totals.late} className="border-red-200 bg-red-50 text-red-800" />
+          <SummaryCard label="Missed clock-outs" value={totals.missedClockOut} className="border-amber-200 bg-amber-50 text-amber-800" />
         </div>
 
         <div className="rounded-lg border bg-card p-4">

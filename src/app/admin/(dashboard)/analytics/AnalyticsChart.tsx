@@ -7,7 +7,7 @@ import type { EmployeeAttendanceScore } from "@/lib/analytics/query";
 
 const BAR_WIDTH_PX = 36;
 const MIN_CHART_WIDTH_PX = 500;
-const TOOLTIP_WIDTH_PX = 200;
+const TOOLTIP_WIDTH_PX = 230;
 const TOOLTIP_OFFSET_PX = 14;
 
 function scoreColor(percentage: number): string {
@@ -65,7 +65,7 @@ export function AnalyticsChart({ data }: { data: EmployeeAttendanceScore[] }) {
   }, [hover]);
 
   const flipLeft = hover ? hover.clientX + TOOLTIP_OFFSET_PX + TOOLTIP_WIDTH_PX > window.innerWidth : false;
-  const flipUp = hover ? hover.clientY + TOOLTIP_OFFSET_PX + 90 > window.innerHeight : false;
+  const flipUp = hover ? hover.clientY + TOOLTIP_OFFSET_PX + 100 > window.innerHeight : false;
 
   return (
     <div ref={chartRef} className="overflow-x-auto">
@@ -105,13 +105,14 @@ export function AnalyticsChart({ data }: { data: EmployeeAttendanceScore[] }) {
               style={{
                 width: TOOLTIP_WIDTH_PX,
                 left: flipLeft ? hover.clientX - TOOLTIP_OFFSET_PX - TOOLTIP_WIDTH_PX : hover.clientX + TOOLTIP_OFFSET_PX,
-                top: flipUp ? hover.clientY - TOOLTIP_OFFSET_PX - 90 : hover.clientY + TOOLTIP_OFFSET_PX,
+                top: flipUp ? hover.clientY - TOOLTIP_OFFSET_PX - 100 : hover.clientY + TOOLTIP_OFFSET_PX,
               }}
             >
               <p className="font-medium">{hover.data.employeeName}</p>
               <p className="mt-1">Score: {hover.data.percentage.toFixed(0)}%</p>
               <p className="mt-1 text-muted-foreground">
-                Early: {hover.data.early} · On time: {hover.data.onTime} · Late: {hover.data.late}
+                Early: {hover.data.early} · On time: {hover.data.onTime} · Late: {hover.data.late} · Missed
+                clock-out: {hover.data.missedClockOut}
               </p>
             </div>,
             document.body

@@ -4,6 +4,7 @@ export interface ReportSummary {
   totalEarly: number;
   totalOnTime: number;
   totalLate: number;
+  totalMissedClockOut: number;
   topPerformers: { name: string; percentage: number }[];
   mostLate: { name: string; lateDays: number }[];
 }
@@ -15,8 +16,9 @@ export function buildReportSummary(scores: EmployeeAttendanceScore[]): ReportSum
       totalEarly: acc.totalEarly + s.early,
       totalOnTime: acc.totalOnTime + s.onTime,
       totalLate: acc.totalLate + s.late,
+      totalMissedClockOut: acc.totalMissedClockOut + s.missedClockOut,
     }),
-    { totalEarly: 0, totalOnTime: 0, totalLate: 0 }
+    { totalEarly: 0, totalOnTime: 0, totalLate: 0, totalMissedClockOut: 0 }
   );
 
   const topPerformers = [...scores]
@@ -36,7 +38,7 @@ export function buildReportSummary(scores: EmployeeAttendanceScore[]): ReportSum
 
 export function summaryToLines(summary: ReportSummary): string[] {
   const lines: string[] = [
-    `Early arrivals: ${summary.totalEarly}  ·  On-time arrivals: ${summary.totalOnTime}  ·  Late arrivals: ${summary.totalLate}`,
+    `Early arrivals: ${summary.totalEarly}  ·  On-time arrivals: ${summary.totalOnTime}  ·  Late arrivals: ${summary.totalLate}  ·  Missed clock-outs: ${summary.totalMissedClockOut}`,
   ];
   lines.push(
     summary.topPerformers.length

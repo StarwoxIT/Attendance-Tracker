@@ -529,7 +529,10 @@ model AttendanceSettings {
   // lib/analytics/score.ts) — higher for earlier arrival, encouraging early > on-time > late.
   earlyPoints                Int            @default(5)
   onTimePoints               Int            @default(3)
+  // latePoints and missedClockOutPoints are penalty magnitudes SUBTRACTED from the
+  // score per occurrence, not points added — a value of 3 means 3 points deducted.
   latePoints                 Int            @default(0)
+  missedClockOutPoints       Int            @default(2)
   updatedAt                 DateTime       @updatedAt
 
   @@map("attendance_settings")

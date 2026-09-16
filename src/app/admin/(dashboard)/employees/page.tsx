@@ -3,6 +3,9 @@ import { prisma } from "@/lib/db/prisma";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { Pagination } from "@/components/admin/Pagination";
+import { PageSizeSelect } from "@/components/admin/PageSizeSelect";
+import { resolvePage, resolvePageSize } from "@/lib/pagination";
 import type { EmploymentStatus, Prisma, WorkArrangement } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -33,9 +36,11 @@ function arrangementLabel(e: { workArrangement: WorkArrangement; onSiteDays: num
 export default async function EmployeesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; workArrangement?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; workArrangement?: string; page?: string; pageSize?: string }>;
 }) {
-  const { q, status, workArrangement } = await searchParams;
+  const { q, status, workArrangement, page, pageSize: pageSizeParam } = await searchParams;
+  const pageNum = resolvePage(page);
+  const pageSize = resolvePageSize(pageSizeParam);
 
   const where: Prisma.EmployeeWhereInput = { isDeleted: false };
   if (status) where.employmentStatus = status as EmploymentStatus;
@@ -49,12 +54,16 @@ export default async function EmployeesPage({
     ];
   }
 
-  const employees = await prisma.employee.findMany({
-    where,
-    include: { office: true, department: true },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-  });
+  const [employees, total] = await Promise.all([
+    prisma.employee.findMany({
+      where,
+      include: { office: true, department: true },
+      orderBy: { createdAt: "desc" },
+      skip: (pageNum - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.employee.count({ where }),
+  ]);
 
   return (
     <>
@@ -93,6 +102,9 @@ export default async function EmployeesPage({
         <Button type="submit" variant="outline">
           Filter
         </Button>
+        <div className="ml-auto">
+          <PageSizeSelect pageSize={pageSize} />
+        </div>
       </form>
 
       {/* Mobile: card list */}
@@ -180,6 +192,14 @@ export default async function EmployeesPage({
           </tbody>
         </table>
       </div>
+
+      <Pagination
+        basePath="/admin/employees"
+        searchParams={{ q, status, workArrangement, pageSize: pageSizeParam }}
+        page={pageNum}
+        pageSize={pageSize}
+        total={total}
+      />
       </div>
     </>
   );

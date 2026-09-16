@@ -2,28 +2,38 @@ import { prisma } from "@/lib/db/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { reviewDeviceFlagAction } from "@/lib/actions/deviceFlags";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { Pagination } from "@/components/admin/Pagination";
+import { PageSizeSelect } from "@/components/admin/PageSizeSelect";
+import { resolvePage, resolvePageSize } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
 
 export default async function DeviceFlagsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ show?: string }>;
+  searchParams: Promise<{ show?: string; page?: string; pageSize?: string }>;
 }) {
-  const { show } = await searchParams;
+  const { show, page, pageSize: pageSizeParam } = await searchParams;
   const showReviewed = show === "reviewed";
+  const pageNum = resolvePage(page);
+  const pageSize = resolvePageSize(pageSizeParam);
 
-  const flags = await prisma.attendanceDeviceFlag.findMany({
-    where: { reviewed: showReviewed },
-    include: {
-      employee: true,
-      previousEmployee: true,
-      attendanceRecord: { include: { office: true } },
-      reviewedBy: true,
-    },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+  const where = { reviewed: showReviewed };
+  const [flags, total] = await Promise.all([
+    prisma.attendanceDeviceFlag.findMany({
+      where,
+      include: {
+        employee: true,
+        previousEmployee: true,
+        attendanceRecord: { include: { office: true } },
+        reviewedBy: true,
+      },
+      orderBy: { createdAt: "desc" },
+      skip: (pageNum - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.attendanceDeviceFlag.count({ where }),
+  ]);
 
   return (
     <>
@@ -37,19 +47,22 @@ export default async function DeviceFlagsPage({
         </p>
       </PageHeader>
       <div className="space-y-6 px-4 py-6 sm:px-6 md:px-8">
-      <div className="flex gap-2 text-sm">
-        <a
-          href="/admin/device-flags"
-          className={`rounded-full px-3 py-1 font-medium ${!showReviewed ? "bg-primary text-primary-foreground" : "bg-muted"}`}
-        >
-          Needs review
-        </a>
-        <a
-          href="/admin/device-flags?show=reviewed"
-          className={`rounded-full px-3 py-1 font-medium ${showReviewed ? "bg-primary text-primary-foreground" : "bg-muted"}`}
-        >
-          Reviewed
-        </a>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex gap-2 text-sm">
+          <a
+            href="/admin/device-flags"
+            className={`rounded-full px-3 py-1 font-medium ${!showReviewed ? "bg-primary text-primary-foreground" : "bg-muted"}`}
+          >
+            Needs review
+          </a>
+          <a
+            href="/admin/device-flags?show=reviewed"
+            className={`rounded-full px-3 py-1 font-medium ${showReviewed ? "bg-primary text-primary-foreground" : "bg-muted"}`}
+          >
+            Reviewed
+          </a>
+        </div>
+        <PageSizeSelect pageSize={pageSize} />
       </div>
 
       <div className="space-y-3">
@@ -102,6 +115,14 @@ export default async function DeviceFlagsPage({
           </Card>
         ) : null}
       </div>
+
+      <Pagination
+        basePath="/admin/device-flags"
+        searchParams={{ show, pageSize: pageSizeParam }}
+        page={pageNum}
+        pageSize={pageSize}
+        total={total}
+      />
       </div>
     </>
   );

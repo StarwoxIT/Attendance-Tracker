@@ -2,6 +2,9 @@ import { prisma } from "@/lib/db/prisma";
 import { requirePermission } from "@/lib/auth/guard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { Pagination } from "@/components/admin/Pagination";
+import { PageSizeSelect } from "@/components/admin/PageSizeSelect";
+import { resolvePage, resolvePageSize } from "@/lib/pagination";
 import { MarkAllReadButton, MarkReadButton } from "./NotificationActions";
 
 export const dynamic = "force-dynamic";
@@ -11,16 +14,27 @@ const TYPE_LABELS: Record<string, string> = {
   EMPLOYEE_DELETION_REQUESTED: "Deletion request",
 };
 
-export default async function NotificationsPage() {
+export default async function NotificationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string; pageSize?: string }>;
+}) {
   const user = await requirePermission("notifications", "view");
+  const { page, pageSize: pageSizeParam } = await searchParams;
+  const pageNum = resolvePage(page);
+  const pageSize = resolvePageSize(pageSizeParam);
 
-  const notifications = await prisma.notification.findMany({
-    where: { targetRole: user.role },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
-
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const where = { targetRole: user.role };
+  const [notifications, total, unreadCount] = await Promise.all([
+    prisma.notification.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (pageNum - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.notification.count({ where }),
+    prisma.notification.count({ where: { ...where, read: false } }),
+  ]);
 
   return (
     <>
@@ -31,6 +45,9 @@ export default async function NotificationsPage() {
         </div>
       </PageHeader>
       <div className="space-y-3 px-4 py-6 sm:px-6 md:px-8">
+        <div className="flex justify-end">
+          <PageSizeSelect pageSize={pageSize} />
+        </div>
         {notifications.map((n) => (
           <Card key={n.id} className={n.read ? "" : "border-primary/40 bg-primary/5"}>
             <CardContent className="flex flex-col gap-2 pt-6 sm:flex-row sm:items-start sm:justify-between">
@@ -53,6 +70,13 @@ export default async function NotificationsPage() {
             </CardHeader>
           </Card>
         ) : null}
+        <Pagination
+          basePath="/admin/notifications"
+          searchParams={{ pageSize: pageSizeParam }}
+          page={pageNum}
+          pageSize={pageSize}
+          total={total}
+        />
       </div>
     </>
   );

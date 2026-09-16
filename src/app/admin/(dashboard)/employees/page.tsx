@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/admin/PageHeader";
-import type { EmploymentStatus, Prisma } from "@prisma/client";
+import type { EmploymentStatus, Prisma, WorkArrangement } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -14,15 +14,32 @@ const STATUS_STYLES: Record<EmploymentStatus, string> = {
   EXITED: "bg-red-100 text-red-700",
 };
 
+const ARRANGEMENT_STYLES: Record<WorkArrangement, string> = {
+  ON_SITE: "bg-slate-100 text-slate-700",
+  HYBRID: "bg-blue-100 text-blue-700",
+  REMOTE: "bg-purple-100 text-purple-700",
+};
+
+const DAY_LABELS: Record<number, string> = { 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat", 7: "Sun" };
+
+function arrangementLabel(e: { workArrangement: WorkArrangement; onSiteDays: number[] }): string {
+  if (e.workArrangement === "HYBRID") {
+    const days = e.onSiteDays.map((d) => DAY_LABELS[d]).join(", ");
+    return days ? `Hybrid (${days})` : "Hybrid";
+  }
+  return e.workArrangement === "ON_SITE" ? "On-site" : "Remote";
+}
+
 export default async function EmployeesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; workArrangement?: string }>;
 }) {
-  const { q, status } = await searchParams;
+  const { q, status, workArrangement } = await searchParams;
 
   const where: Prisma.EmployeeWhereInput = { isDeleted: false };
   if (status) where.employmentStatus = status as EmploymentStatus;
+  if (workArrangement) where.workArrangement = workArrangement as WorkArrangement;
   if (q) {
     where.OR = [
       { firstName: { contains: q, mode: "insensitive" } },
@@ -63,6 +80,16 @@ export default async function EmployeesPage({
           <option value="SUSPENDED">Suspended</option>
           <option value="EXITED">Exited</option>
         </select>
+        <select
+          name="workArrangement"
+          defaultValue={workArrangement ?? ""}
+          className="h-10 flex-1 rounded-md border border-input bg-background px-3 text-sm sm:flex-none"
+        >
+          <option value="">All arrangements</option>
+          <option value="ON_SITE">On-site</option>
+          <option value="HYBRID">Hybrid</option>
+          <option value="REMOTE">Remote</option>
+        </select>
         <Button type="submit" variant="outline">
           Filter
         </Button>
@@ -91,6 +118,9 @@ export default async function EmployeesPage({
               {e.office.name}
               {e.department ? ` · ${e.department.name}` : ""}
             </p>
+            <span className={`mt-2 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${ARRANGEMENT_STYLES[e.workArrangement]}`}>
+              {arrangementLabel(e)}
+            </span>
           </Link>
         ))}
         {employees.length === 0 ? (
@@ -109,6 +139,7 @@ export default async function EmployeesPage({
               <th className="px-4 py-2">Name</th>
               <th className="px-4 py-2">Department</th>
               <th className="px-4 py-2">Office</th>
+              <th className="px-4 py-2">Arrangement</th>
               <th className="px-4 py-2">Status</th>
               <th className="px-4 py-2" />
             </tr>
@@ -123,6 +154,11 @@ export default async function EmployeesPage({
                 <td className="px-4 py-2">{e.department?.name ?? "—"}</td>
                 <td className="px-4 py-2">{e.office.name}</td>
                 <td className="px-4 py-2">
+                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ARRANGEMENT_STYLES[e.workArrangement]}`}>
+                    {arrangementLabel(e)}
+                  </span>
+                </td>
+                <td className="px-4 py-2">
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLES[e.employmentStatus]}`}>
                     {e.employmentStatus}
                   </span>
@@ -136,7 +172,7 @@ export default async function EmployeesPage({
             ))}
             {employees.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                   No employees found.
                 </td>
               </tr>

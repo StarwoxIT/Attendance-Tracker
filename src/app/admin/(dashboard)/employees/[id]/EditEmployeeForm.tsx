@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { updateEmployeeAction } from "@/lib/actions/employees";
 import { toast, toastError } from "@/hooks/use-toast";
+import { WorkArrangementFields, type WorkArrangementValue } from "@/components/admin/WorkArrangementFields";
 import type { Department, Employee, Office } from "@prisma/client";
 
 export function EditEmployeeForm({
@@ -77,6 +78,10 @@ export function EditEmployeeForm({
       <p className="col-span-2 -mt-2 text-xs text-muted-foreground">
         Leave resumption/closing time blank to use the general attendance settings for this employee.
       </p>
+      <WorkArrangementFields
+        defaultArrangement={employee.workArrangement as WorkArrangementValue}
+        defaultOnSiteDays={employee.onSiteDays}
+      />
       <div className="col-span-2">
         <Button type="submit" disabled={pending}>
           {pending ? "Saving…" : "Save changes"}

@@ -31,7 +31,11 @@ export async function fetchAttendanceScores(params: AttendanceScoreRangeParams):
     where: {
       ...((from || to) && { attendanceDate: { ...(from && { gte: from }), ...(to && { lte: to }) } }),
       ...(officeId ? { officeId } : {}),
-      employee: { isDeleted: false, ...(departmentId ? { departmentId } : {}) },
+      // REMOTE employees are never expected to clock in, so there's nothing
+      // meaningful to score — excluded from Analytics entirely rather than just
+      // scoring 0%. Fully remote staff can still clock in if they want to; this
+      // only affects ranking/scoring, not who's allowed to use the kiosk.
+      employee: { isDeleted: false, workArrangement: { not: "REMOTE" }, ...(departmentId ? { departmentId } : {}) },
     },
     select: {
       employeeId: true,

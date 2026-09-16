@@ -37,7 +37,19 @@ const employeeSchema = z.object({
   // general attendance settings' workStart/workEnd.
   workStart: workTime,
   workEnd: workTime,
+  workArrangement: z.enum(["ON_SITE", "HYBRID", "REMOTE"]).default("ON_SITE"),
 });
+
+/** onSiteDays is a multi-value checkbox field (ISO weekdays, 1=Mon..7=Sun) — FormData
+ * carries repeated same-name entries, which Object.fromEntries collapses to just the
+ * last one, so it's read separately via getAll rather than through the zod object above. */
+function parseOnSiteDays(formData: FormData): number[] {
+  return Array.from(new Set(
+    formData.getAll("onSiteDays")
+      .map((v) => Number(v))
+      .filter((n) => Number.isInteger(n) && n >= 1 && n <= 7)
+  )).sort((a, b) => a - b);
+}
 
 export interface EmployeeFormState {
   error?: string;
@@ -74,6 +86,8 @@ export async function createEmployeeAction(
           dateEmployed: parsed.data.dateEmployed ? new Date(parsed.data.dateEmployed) : null,
           workStart: parsed.data.workStart || null,
           workEnd: parsed.data.workEnd || null,
+          workArrangement: parsed.data.workArrangement,
+          onSiteDays: parsed.data.workArrangement === "HYBRID" ? parseOnSiteDays(formData) : [],
         },
       });
 
@@ -118,6 +132,8 @@ export async function updateEmployeeAction(employeeId: string, formData: FormDat
       dateEmployed: parsed.data.dateEmployed ? new Date(parsed.data.dateEmployed) : null,
       workStart: parsed.data.workStart || null,
       workEnd: parsed.data.workEnd || null,
+      workArrangement: parsed.data.workArrangement,
+      onSiteDays: parsed.data.workArrangement === "HYBRID" ? parseOnSiteDays(formData) : [],
     },
   });
 

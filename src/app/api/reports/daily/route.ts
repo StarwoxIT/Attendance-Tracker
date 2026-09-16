@@ -44,7 +44,12 @@ export async function GET(request: NextRequest) {
     to: to ? new Date(`${to}T00:00:00Z`) : undefined,
     officeId: searchParams.get("officeId") ?? undefined,
     departmentId: searchParams.get("departmentId") ?? undefined,
-    weights: { earlyPoints: settings.earlyPoints, onTimePoints: settings.onTimePoints, latePoints: settings.latePoints },
+    weights: {
+      earlyPoints: settings.earlyPoints,
+      onTimePoints: settings.onTimePoints,
+      latePoints: settings.latePoints,
+      missedClockOutPoints: settings.missedClockOutPoints,
+    },
   });
   const summaryLines = summaryToLines(buildReportSummary(scores));
 

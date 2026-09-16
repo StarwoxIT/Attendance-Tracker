@@ -65,6 +65,29 @@ export default async function ReportsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Performance report</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Cumulative attendance score per employee for the period, ranked best to worst — the same scoring behind
+            the Analytics dashboard, as one row per employee instead of a chart.
+          </p>
+          <form action="/api/reports/performance" className="flex flex-wrap items-end gap-2">
+            <Field label="From"><Input type="date" name="from" /></Field>
+            <Field label="To"><Input type="date" name="to" /></Field>
+            <Field label="Office">
+              <select name="officeId" className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+                <option value="">All</option>
+                {offices.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+            </Field>
+            <ExportButtons />
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Employee attendance report</CardTitle>
         </CardHeader>
         <CardContent>

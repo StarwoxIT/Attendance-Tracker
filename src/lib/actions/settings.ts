@@ -102,6 +102,7 @@ const attendanceSettingsSchema = z.object({
   earlyPoints: z.coerce.number().int().min(0).max(100),
   onTimePoints: z.coerce.number().int().min(0).max(100),
   latePoints: z.coerce.number().int().min(0).max(100),
+  missedClockOutPoints: z.coerce.number().int().min(0).max(100),
 });
 
 export async function updateAttendanceSettingsAction(formData: FormData): Promise<void> {

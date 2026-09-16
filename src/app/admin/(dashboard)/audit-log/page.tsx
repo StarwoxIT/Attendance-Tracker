@@ -3,17 +3,20 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import type { Prisma } from "@prisma/client";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { Pagination } from "@/components/admin/Pagination";
+import { PageSizeSelect } from "@/components/admin/PageSizeSelect";
+import { resolvePage, resolvePageSize } from "@/lib/pagination";
 
 export const dynamic = "force-dynamic";
 
 export default async function AuditLogPage({
   searchParams,
 }: {
-  searchParams: Promise<{ action?: string; resource?: string; page?: string }>;
+  searchParams: Promise<{ action?: string; resource?: string; page?: string; pageSize?: string }>;
 }) {
-  const { action, resource, page } = await searchParams;
-  const pageNum = Math.max(1, Number(page) || 1);
-  const pageSize = 50;
+  const { action, resource, page, pageSize: pageSizeParam } = await searchParams;
+  const pageNum = resolvePage(page);
+  const pageSize = resolvePageSize(pageSizeParam);
 
   const where: Prisma.AuditLogWhereInput = {};
   if (action) where.action = { contains: action, mode: "insensitive" };
@@ -42,6 +45,9 @@ export default async function AuditLogPage({
         <Button type="submit" variant="outline">
           Filter
         </Button>
+        <div className="ml-auto">
+          <PageSizeSelect pageSize={pageSize} />
+        </div>
       </form>
 
       {/* Mobile: card list */}
@@ -104,9 +110,13 @@ export default async function AuditLogPage({
           </tbody>
         </table>
       </div>
-      <p className="text-sm text-muted-foreground">
-        {total} total entries · page {pageNum}
-      </p>
+      <Pagination
+        basePath="/admin/audit-log"
+        searchParams={{ action, resource, pageSize: pageSizeParam }}
+        page={pageNum}
+        pageSize={pageSize}
+        total={total}
+      />
       </div>
     </>
   );

@@ -3,6 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getAttendanceSettings } from "@/lib/attendance/settings";
 import { formatInTimeZone } from "date-fns-tz";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { Pagination } from "@/components/admin/Pagination";
+import { PageSizeSelect } from "@/components/admin/PageSizeSelect";
+import { resolvePage, resolvePageSize } from "@/lib/pagination";
 import { GenerateQrForm, DeactivateQrButton } from "./QrActions";
 
 export const dynamic = "force-dynamic";
@@ -24,14 +27,24 @@ function missingArtifacts(qr: { pdfUrl: string | null; pngUrl: string | null }):
   return !qr.pdfUrl && !qr.pngUrl;
 }
 
-export default async function QrPage() {
-  const [offices, qrCodes, settings] = await Promise.all([
+export default async function QrPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string; pageSize?: string }>;
+}) {
+  const { page, pageSize: pageSizeParam } = await searchParams;
+  const pageNum = resolvePage(page);
+  const pageSize = resolvePageSize(pageSizeParam);
+
+  const [offices, qrCodes, total, settings] = await Promise.all([
     prisma.office.findMany({ orderBy: { name: "asc" } }),
     prisma.attendanceQrCode.findMany({
       include: { office: true, generatedBy: true },
       orderBy: { createdAt: "desc" },
-      take: 30,
+      skip: (pageNum - 1) * pageSize,
+      take: pageSize,
     }),
+    prisma.attendanceQrCode.count(),
     getAttendanceSettings(),
   ]);
 
@@ -62,6 +75,11 @@ export default async function QrPage() {
           ) : null}
         </CardContent>
       </Card>
+
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-medium text-muted-foreground">Generated codes</h2>
+        <PageSizeSelect pageSize={pageSize} />
+      </div>
 
       {/* Mobile: card list */}
       <div className="space-y-2 md:hidden">
@@ -167,6 +185,8 @@ export default async function QrPage() {
           </tbody>
         </table>
       </div>
+
+      <Pagination basePath="/admin/qr" searchParams={{ pageSize: pageSizeParam }} page={pageNum} pageSize={pageSize} total={total} />
       </div>
     </>
   );

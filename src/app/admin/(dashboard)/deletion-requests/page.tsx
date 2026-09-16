@@ -3,6 +3,9 @@ import { prisma } from "@/lib/db/prisma";
 import { requirePermission } from "@/lib/auth/guard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { Pagination } from "@/components/admin/Pagination";
+import { PageSizeSelect } from "@/components/admin/PageSizeSelect";
+import { resolvePage, resolvePageSize } from "@/lib/pagination";
 import { ReviewDeletionForm } from "./ReviewDeletionForm";
 
 export const dynamic = "force-dynamic";
@@ -16,18 +19,25 @@ const STATUS_STYLES: Record<string, string> = {
 export default async function DeletionRequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ show?: string }>;
+  searchParams: Promise<{ show?: string; page?: string; pageSize?: string }>;
 }) {
   await requirePermission("deletionRequests", "view");
-  const { show } = await searchParams;
+  const { show, page, pageSize: pageSizeParam } = await searchParams;
   const showResolved = show === "resolved";
+  const pageNum = resolvePage(page);
+  const pageSize = resolvePageSize(pageSizeParam);
 
-  const requests = await prisma.employeeDeletionRequest.findMany({
-    where: { status: showResolved ? { not: "PENDING" } : "PENDING" },
-    include: { employee: true, requestedBy: true, reviewedBy: true },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+  const where = { status: showResolved ? { not: "PENDING" as const } : ("PENDING" as const) };
+  const [requests, total] = await Promise.all([
+    prisma.employeeDeletionRequest.findMany({
+      where,
+      include: { employee: true, requestedBy: true, reviewedBy: true },
+      orderBy: { createdAt: "desc" },
+      skip: (pageNum - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.employeeDeletionRequest.count({ where }),
+  ]);
 
   return (
     <>
@@ -39,19 +49,22 @@ export default async function DeletionRequestsPage({
         </p>
       </PageHeader>
       <div className="space-y-6 px-4 py-6 sm:px-6 md:px-8">
-        <div className="flex gap-2 text-sm">
-          <Link
-            href="/admin/deletion-requests"
-            className={`rounded-full px-3 py-1 font-medium ${!showResolved ? "bg-primary text-primary-foreground" : "bg-muted"}`}
-          >
-            Pending
-          </Link>
-          <Link
-            href="/admin/deletion-requests?show=resolved"
-            className={`rounded-full px-3 py-1 font-medium ${showResolved ? "bg-primary text-primary-foreground" : "bg-muted"}`}
-          >
-            Resolved
-          </Link>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex gap-2 text-sm">
+            <Link
+              href="/admin/deletion-requests"
+              className={`rounded-full px-3 py-1 font-medium ${!showResolved ? "bg-primary text-primary-foreground" : "bg-muted"}`}
+            >
+              Pending
+            </Link>
+            <Link
+              href="/admin/deletion-requests?show=resolved"
+              className={`rounded-full px-3 py-1 font-medium ${showResolved ? "bg-primary text-primary-foreground" : "bg-muted"}`}
+            >
+              Resolved
+            </Link>
+          </div>
+          <PageSizeSelect pageSize={pageSize} />
         </div>
 
         <div className="space-y-3">
@@ -94,6 +107,14 @@ export default async function DeletionRequestsPage({
             </Card>
           ) : null}
         </div>
+
+        <Pagination
+          basePath="/admin/deletion-requests"
+          searchParams={{ show, pageSize: pageSizeParam }}
+          page={pageNum}
+          pageSize={pageSize}
+          total={total}
+        />
       </div>
     </>
   );

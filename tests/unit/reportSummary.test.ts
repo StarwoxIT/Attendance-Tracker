@@ -3,10 +3,25 @@ import { buildReportSummary, summaryToLines } from "@/lib/reports/summary";
 import { computeAttendanceScore } from "@/lib/analytics/score";
 import type { EmployeeAttendanceScore } from "@/lib/analytics/query";
 
-const WEIGHTS = { earlyPoints: 5, onTimePoints: 3, latePoints: 0 };
+const WEIGHTS = { earlyPoints: 5, onTimePoints: 3, latePoints: 0, missedClockOutPoints: 2 };
 
-function scoreRow(employeeId: string, employeeName: string, early: number, onTime: number, late: number): EmployeeAttendanceScore {
-  return { employeeId, employeeName, early, onTime, late, ...computeAttendanceScore({ early, onTime, late }, WEIGHTS) };
+function scoreRow(
+  employeeId: string,
+  employeeName: string,
+  early: number,
+  onTime: number,
+  late: number,
+  missedClockOut = 0
+): EmployeeAttendanceScore {
+  return {
+    employeeId,
+    employeeName,
+    early,
+    onTime,
+    late,
+    missedClockOut,
+    ...computeAttendanceScore({ early, onTime, late, missedClockOut }, WEIGHTS),
+  };
 }
 
 describe("buildReportSummary", () => {
@@ -17,11 +32,12 @@ describe("buildReportSummary", () => {
     scoreRow("4", "Dayo Mixed", 5, 5, 10),
   ];
 
-  it("totals early/on-time/late counts across all employees", () => {
+  it("totals early/on-time/late/missed-clockout counts across all employees", () => {
     const summary = buildReportSummary(scores);
     expect(summary.totalEarly).toBe(25);
     expect(summary.totalOnTime).toBe(25);
     expect(summary.totalLate).toBe(30);
+    expect(summary.totalMissedClockOut).toBe(0);
   });
 
   it("ranks the top performers by score, best first", () => {

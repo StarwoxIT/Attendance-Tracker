@@ -19,6 +19,7 @@ const DEFAULTS: Omit<AttendanceSettings, "id" | "updatedAt"> = {
   earlyPoints: 5,
   onTimePoints: 3,
   latePoints: 0,
+  missedClockOutPoints: 2,
 };
 
 export async function getAttendanceSettings(): Promise<AttendanceSettings> {

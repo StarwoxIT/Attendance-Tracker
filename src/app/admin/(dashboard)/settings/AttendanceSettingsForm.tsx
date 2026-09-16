@@ -79,8 +79,9 @@ export function AttendanceSettingsForm({ settings }: { settings: AttendanceSetti
       <div className="col-span-full border-t pt-4">
         <p className="text-sm font-medium">Performance score weights</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Points awarded per day on the Analytics dashboard and in report summaries. Higher points for earlier
-          arrival rewards employees who are consistently early over those who are only on time or late.
+          Early and on-time points are <strong>awarded</strong> per day on the Analytics dashboard and in report
+          summaries. Late and missed clock-out points are <strong>deducted</strong> instead — a value of 3 means 3
+          points subtracted from that employee&apos;s score for each occurrence, not 3 points added.
         </p>
       </div>
       <div>
@@ -92,8 +93,12 @@ export function AttendanceSettingsForm({ settings }: { settings: AttendanceSetti
         <Input type="number" name="onTimePoints" defaultValue={settings.onTimePoints} min={0} max={100} />
       </div>
       <div>
-        <label className="mb-1 block text-sm font-medium">Late (points/day)</label>
+        <label className="mb-1 block text-sm font-medium">Late (penalty points/day)</label>
         <Input type="number" name="latePoints" defaultValue={settings.latePoints} min={0} max={100} />
+      </div>
+      <div>
+        <label className="mb-1 block text-sm font-medium">Missed clock-out (penalty points/day)</label>
+        <Input type="number" name="missedClockOutPoints" defaultValue={settings.missedClockOutPoints} min={0} max={100} />
       </div>
 
       <div className="col-span-full">

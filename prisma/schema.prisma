@@ -110,6 +110,16 @@ enum EmploymentStatus {
   EXITED
 }
 
+// How an employee is expected to attend the office. HYBRID employees additionally
+// carry onSiteDays; REMOTE employees are excluded from Analytics scoring entirely
+// since there's nothing meaningful to measure. Clock-in itself is unaffected by
+// this — it's used for reporting/analytics context, not access control.
+enum WorkArrangement {
+  ON_SITE
+  HYBRID
+  REMOTE
+}
+
 model Employee {
   id               String           @id @default(cuid())
   employeeNumber   String           @unique
@@ -133,6 +143,11 @@ model Employee {
   // back to AttendanceSettings.workStart/workEnd (see attendance/rules.ts) when null.
   workStart        String?
   workEnd          String?
+  workArrangement  WorkArrangement  @default(ON_SITE)
+  // ISO weekdays (1=Mon..7=Sun) this employee is expected on-site. Only meaningful
+  // when workArrangement is HYBRID; metadata only for now (see docs/analytics — no
+  // enforcement or flagging on clock-in yet).
+  onSiteDays       Int[]            @default([])
   // Soft-delete: hidden from all active lists and clock-in lookup once true, but the
   // row and its attendance history are preserved for reporting/audit and can be
   // restored. See EmployeeDeletionRequest for the approval workflow that sets this.

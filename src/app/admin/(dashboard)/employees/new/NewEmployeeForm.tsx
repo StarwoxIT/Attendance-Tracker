@@ -5,6 +5,7 @@ import { createEmployeeAction, type EmployeeFormState } from "@/lib/actions/empl
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
+import { WorkArrangementFields } from "@/components/admin/WorkArrangementFields";
 import type { Department, Office } from "@prisma/client";
 
 const initialState: EmployeeFormState = {};
@@ -66,6 +67,7 @@ export function NewEmployeeForm({ offices, departments }: { offices: Office[]; d
         <Field label="Date employed" name="dateEmployed" type="date" />
         <Field label="Resumption time (optional)" name="workStart" type="time" />
         <Field label="Closing time (optional)" name="workEnd" type="time" />
+        <WorkArrangementFields />
       </div>
       <p className="text-xs text-muted-foreground">
         Leave resumption/closing time blank to use the general attendance settings for this employee.

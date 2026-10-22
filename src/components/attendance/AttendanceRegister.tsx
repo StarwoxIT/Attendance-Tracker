@@ -4,6 +4,14 @@ import { useState, useRef, useEffect, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { countWords, MAX_EARLY_CLOCKOUT_REASON_WORDS } from "@/lib/attendance/rules";
+import {
+  MAX_NO_TASKS_REASON_LENGTH,
+  MAX_TASK_DESCRIPTION_LENGTH,
+  MAX_TASKS_PER_REPORT,
+  TASK_STATUS_LABELS,
+  TASK_STATUSES,
+  type TaskReportInput,
+} from "@/lib/attendance/taskReport";
 
 interface AttendanceRegisterProps {
   companyName: string;
@@ -23,8 +31,23 @@ type ClockResult =
       clockInTime?: string;
       totalMinutesWorked?: number;
       clockOutStatus?: "EARLY" | "ON_TIME";
+      tasksReported?: number;
     }
   | { ok: false; message: string };
+
+/** Clock-out is a short wizard: ID → task report → (only if leaving early) reason. */
+type Step = "id" | "tasks" | "earlyReason";
+
+/** "none" = the employee had no tasks today and explains why instead. */
+type ReportMode = "tasks" | "none";
+
+type ReportPayload = { tasks: TaskReportInput; noTasksReason?: never } | { noTasksReason: string; tasks?: never };
+
+interface TaskDraft {
+  key: number;
+  description: string;
+  status: TaskReportInput[number]["status"] | "";
+}
 
 const ERROR_MESSAGES: Record<string, string> = {
   rate_limited: "Too many attempts. Please wait a moment and try again.",
@@ -33,6 +56,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   qr_expired: "This QR code has expired.\nPlease scan today's attendance QR code.",
   qr_not_yet_active: "This QR code is not active yet.",
 };
+
+// Denials that end the attempt outright. Anything else hit mid clock-out (network
+// blip, server error, rate limit) keeps the report on screen so the employee can retry.
+const FINAL_DENIALS = new Set(["ALREADY_COMPLETE", "INVALID_EMPLOYEE"]);
 
 export function AttendanceRegister({
   companyName,
@@ -43,21 +70,27 @@ export function AttendanceRegister({
 }: AttendanceRegisterProps) {
   const [attendanceId, setAttendanceId] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [needsEarlyReason, setNeedsEarlyReason] = useState(false);
+  const [step, setStep] = useState<Step>("id");
+  const [tasks, setTasks] = useState<TaskDraft[]>([]);
+  const [reportMode, setReportMode] = useState<ReportMode>("tasks");
+  const [noTasksReason, setNoTasksReason] = useState("");
+  const [showTaskErrors, setShowTaskErrors] = useState(false);
+  const [stepError, setStepError] = useState<string | null>(null);
   const [earlyReason, setEarlyReason] = useState("");
   const [result, setResult] = useState<ClockResult | null>(
     initialError ? { ok: false, message: ERROR_MESSAGES[initialError] ?? "Something went wrong." } : null
   );
   const inputRef = useRef<HTMLInputElement>(null);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
+  const nextTaskKey = useRef(0);
 
   useEffect(() => {
-    if (needsEarlyReason) {
+    if (step === "earlyReason") {
       reasonRef.current?.focus();
-    } else {
+    } else if (step === "id") {
       inputRef.current?.focus();
     }
-  }, [result, needsEarlyReason]);
+  }, [result, step]);
 
   useEffect(() => {
     if (!result) return;
@@ -68,34 +101,74 @@ export function AttendanceRegister({
     return () => clearTimeout(t);
   }, [result, resetSeconds]);
 
-  async function submitClock(reason?: string) {
+  function newTask(): TaskDraft {
+    nextTaskKey.current += 1;
+    return { key: nextTaskKey.current, description: "", status: "" };
+  }
+
+  function resetFlow() {
+    setStep("id");
+    setTasks([]);
+    setReportMode("tasks");
+    setNoTasksReason("");
+    setShowTaskErrors(false);
+    setStepError(null);
+    setEarlyReason("");
+    setAttendanceId("");
+  }
+
+  async function submitClock(payload: Partial<ReportPayload> & { earlyClockOutReason?: string } = {}) {
     setSubmitting(true);
+    setStepError(null);
+    const midClockOut = step !== "id";
     try {
       const res = await fetch("/api/attendance/clock-in", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(reason ? { attendanceId, earlyClockOutReason: reason } : { attendanceId }),
+        body: JSON.stringify({ attendanceId, ...payload }),
       });
-      const data = await res.json();
+      // A crashed request returns an HTML error page, not JSON — report it as a server error rather than a network one.
+      const data = await res.json().catch(() => ({
+        ok: false,
+        reason: "SERVER_ERROR",
+        message: "Something went wrong on the server and nothing was saved. Please try again — if it keeps happening, tell your admin.",
+      }));
       if (data.ok) {
-        setNeedsEarlyReason(false);
-        setEarlyReason("");
+        resetFlow();
         setResult(data as ClockResult);
-        setAttendanceId("");
+      } else if (data.reason === "TASK_REPORT_REQUIRED") {
+        setTasks((current) => (current.length > 0 ? current : [newTask()]));
+        setStep("tasks");
       } else if (data.reason === "EARLY_CLOCKOUT_REASON_REQUIRED") {
-        setNeedsEarlyReason(true);
+        setStep("earlyReason");
+      } else if (midClockOut && !FINAL_DENIALS.has(data.reason)) {
+        setStepError(data.message ?? "Your report couldn't be saved. Please try again.");
       } else {
-        setNeedsEarlyReason(false);
-        setEarlyReason("");
+        resetFlow();
         setResult({ ok: false, message: data.message ?? "Attendance could not be recorded." });
-        setAttendanceId("");
       }
     } catch {
-      setResult({ ok: false, message: "Network error. Please try again." });
-      setAttendanceId("");
+      if (midClockOut) {
+        setStepError("Network error — your report hasn't been saved and you're still clocked in. Please try again.");
+      } else {
+        resetFlow();
+        setResult({ ok: false, message: "Network error. Please try again." });
+      }
     } finally {
       setSubmitting(false);
     }
+  }
+
+  /** The report to send — the task list, or the no-tasks explanation, whichever the employee chose. */
+  function completedReport(): ReportPayload | null {
+    if (reportMode === "none") {
+      return noTasksReason.trim() ? { noTasksReason: noTasksReason.trim() } : null;
+    }
+    const valid = tasks.every((t) => t.description.trim() !== "" && t.status !== "");
+    if (!valid) return null;
+    return {
+      tasks: tasks.map((t) => ({ description: t.description.trim(), status: t.status as TaskReportInput[number]["status"] })),
+    };
   }
 
   function handleSubmit(e: FormEvent) {
@@ -104,24 +177,195 @@ export function AttendanceRegister({
     submitClock();
   }
 
+  function handleSubmitTasks(e: FormEvent) {
+    e.preventDefault();
+    if (submitting) return;
+    const report = completedReport();
+    if (!report) {
+      setShowTaskErrors(true);
+      return;
+    }
+    submitClock(report);
+  }
+
   function handleConfirmEarlyClockOut(e: FormEvent) {
     e.preventDefault();
     const wordCount = countWords(earlyReason);
-    if (wordCount === 0 || wordCount > MAX_EARLY_CLOCKOUT_REASON_WORDS || submitting) return;
-    submitClock(earlyReason.trim());
+    const report = completedReport();
+    if (wordCount === 0 || wordCount > MAX_EARLY_CLOCKOUT_REASON_WORDS || submitting || !report) return;
+    submitClock({ ...report, earlyClockOutReason: earlyReason.trim() });
   }
 
-  function cancelEarlyClockOut() {
-    setNeedsEarlyReason(false);
-    setEarlyReason("");
-    setAttendanceId("");
+  function updateTask(key: number, patch: Partial<Omit<TaskDraft, "key">>) {
+    setTasks((current) => current.map((t) => (t.key === key ? { ...t, ...patch } : t)));
   }
 
   if (result) {
     return <ResultScreen result={result} />;
   }
 
-  if (needsEarlyReason) {
+  if (step === "tasks") {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-muted px-4 py-8 sm:px-6 sm:py-12">
+        <div className="w-full max-w-xl rounded-2xl border bg-card p-6 shadow-sm sm:p-10">
+          <h2 className="text-center text-xl font-bold">What have you worked on today?</h2>
+          <p className="mt-2 text-center text-sm text-muted-foreground">
+            Add each task you worked on and how far you got. You&apos;ll be clocked out once your report is saved.
+          </p>
+          <form onSubmit={handleSubmitTasks} className="mt-6 flex flex-col gap-4" noValidate>
+            <div role="radiogroup" aria-label="What have you worked on today?" className="flex flex-col gap-2">
+              {(
+                [
+                  ["tasks", "I worked on tasks today"],
+                  ["none", "I have no tasks to report today"],
+                ] as const
+              ).map(([mode, label]) => (
+                <label
+                  key={mode}
+                  className={`flex cursor-pointer items-center gap-3 rounded-lg border px-4 py-3 text-sm ${reportMode === mode ? "border-primary bg-primary/5" : "border-input"}`}
+                >
+                  <input
+                    type="radio"
+                    name="reportMode"
+                    value={mode}
+                    checked={reportMode === mode}
+                    onChange={() => {
+                      setReportMode(mode);
+                      setShowTaskErrors(false);
+                      setStepError(null);
+                    }}
+                    className="h-4 w-4 accent-primary"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+
+            {reportMode === "none" ? (
+              <div className="flex flex-col gap-1">
+                <label htmlFor="no-tasks-reason" className="text-sm font-medium">
+                  Why did you have no tasks to report today? <span className="text-muted-foreground">(Required)</span>
+                </label>
+                <textarea
+                  id="no-tasks-reason"
+                  autoFocus
+                  value={noTasksReason}
+                  onChange={(e) => setNoTasksReason(e.target.value)}
+                  rows={3}
+                  maxLength={MAX_NO_TASKS_REASON_LENGTH}
+                  placeholder="e.g. No tasks were assigned to me today."
+                  aria-invalid={showTaskErrors && noTasksReason.trim() === ""}
+                  className={`w-full rounded-md border bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${showTaskErrors && noTasksReason.trim() === "" ? "border-red-500" : "border-input"}`}
+                />
+                <div className="flex justify-between gap-2 text-xs text-muted-foreground">
+                  <span>Your explanation will be included in your daily report.</span>
+                  <span className="shrink-0">
+                    {noTasksReason.length}/{MAX_NO_TASKS_REASON_LENGTH}
+                  </span>
+                </div>
+                {showTaskErrors && noTasksReason.trim() === "" ? (
+                  <p className="text-xs text-red-600">Please explain why you have no tasks to report.</p>
+                ) : null}
+              </div>
+            ) : (
+              <>
+                {tasks.map((task, index) => {
+                  const descriptionMissing = showTaskErrors && task.description.trim() === "";
+                  const statusMissing = showTaskErrors && task.status === "";
+                  return (
+                    <fieldset key={task.key} aria-label={`Task ${index + 1}`} className="rounded-lg border p-4">
+                      <div className="mb-2 flex items-center justify-between">
+                        <span className="text-sm font-semibold">Task {index + 1}</span>
+                        {tasks.length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() => setTasks((current) => current.filter((t) => t.key !== task.key))}
+                            className="text-xs text-muted-foreground hover:text-red-600 hover:underline"
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </div>
+                      <label htmlFor={`task-${task.key}-description`} className="sr-only">
+                        Task {index + 1} description
+                      </label>
+                      <textarea
+                        id={`task-${task.key}-description`}
+                        autoFocus={index === tasks.length - 1}
+                        value={task.description}
+                        onChange={(e) => updateTask(task.key, { description: e.target.value })}
+                        rows={2}
+                        maxLength={MAX_TASK_DESCRIPTION_LENGTH}
+                        placeholder="e.g. Reconciled September vendor invoices"
+                        aria-invalid={descriptionMissing}
+                        className={`w-full rounded-md border bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${descriptionMissing ? "border-red-500" : "border-input"}`}
+                      />
+                      <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <label htmlFor={`task-${task.key}-status`} className="sr-only">
+                          Task {index + 1} status
+                        </label>
+                        <select
+                          id={`task-${task.key}-status`}
+                          value={task.status}
+                          onChange={(e) => updateTask(task.key, { status: e.target.value as TaskDraft["status"] })}
+                          aria-invalid={statusMissing}
+                          className={`h-10 rounded-md border bg-background px-3 text-sm ${statusMissing ? "border-red-500" : "border-input"}`}
+                        >
+                          <option value="">Select status…</option>
+                          {TASK_STATUSES.map((status) => (
+                            <option key={status} value={status}>
+                              {TASK_STATUS_LABELS[status]}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="text-right text-xs text-muted-foreground">
+                          {task.description.length}/{MAX_TASK_DESCRIPTION_LENGTH}
+                        </span>
+                      </div>
+                      {descriptionMissing || statusMissing ? (
+                        <p className="mt-1 text-xs text-red-600">
+                          {descriptionMissing && statusMissing
+                            ? "Describe the task and choose a status."
+                            : descriptionMissing
+                              ? "Describe the task."
+                              : "Choose a status."}
+                        </p>
+                      ) : null}
+                    </fieldset>
+                  );
+                })}
+
+                {tasks.length < MAX_TASKS_PER_REPORT ? (
+                  <Button type="button" variant="outline" onClick={() => setTasks((current) => [...current, newTask()])}>
+                    + Add another task
+                  </Button>
+                ) : (
+                  <p className="text-center text-xs text-muted-foreground">Maximum of {MAX_TASKS_PER_REPORT} tasks.</p>
+                )}
+              </>
+            )}
+
+            {stepError ? (
+              <p role="alert" className="whitespace-pre-line rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+                {stepError}
+              </p>
+            ) : null}
+
+            <div className="mt-2 flex flex-col gap-2">
+              <Button type="submit" size="xl" disabled={submitting}>
+                {submitting ? "Saving…" : "Submit Report & Clock Out"}
+              </Button>
+              <Button type="button" variant="outline" size="xl" onClick={resetFlow}>
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === "earlyReason") {
     const wordCount = countWords(earlyReason);
     const overLimit = wordCount > MAX_EARLY_CLOCKOUT_REASON_WORDS;
     return (
@@ -147,17 +391,29 @@ export function AttendanceRegister({
             <p className={`text-right text-xs ${overLimit ? "text-red-600" : "text-muted-foreground"}`}>
               {wordCount}/{MAX_EARLY_CLOCKOUT_REASON_WORDS} words
             </p>
-            <div className="mt-2 flex flex-col gap-2 sm:flex-row-reverse">
+            {stepError ? (
+              <p role="alert" className="whitespace-pre-line rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+                {stepError}
+              </p>
+            ) : null}
+            <div className="mt-2 flex flex-col gap-2">
               <Button
                 type="submit"
                 size="xl"
                 disabled={submitting || wordCount === 0 || overLimit}
-                className="flex-1"
               >
                 {submitting ? "Please wait…" : "Confirm Clock Out Early"}
               </Button>
-              <Button type="button" variant="outline" size="xl" onClick={cancelEarlyClockOut} className="flex-1">
-                Cancel
+              <Button
+                type="button"
+                variant="outline"
+                size="xl"
+                onClick={() => {
+                  setStepError(null);
+                  setStep("tasks");
+                }}
+              >
+                Back to Report
               </Button>
             </div>
           </form>
@@ -198,7 +454,8 @@ export function AttendanceRegister({
           </Button>
         </form>
         <p className="mt-3 text-xs text-muted-foreground">
-          Leaving before end of day? Just enter your ID above — you&apos;ll be asked for a quick reason.
+          Clocking out? You&apos;ll be asked what you worked on today, and for a quick reason if you&apos;re leaving
+          early.
         </p>
       </div>
     </div>
@@ -250,6 +507,13 @@ function ResultScreen({ result }: { result: ClockResult }) {
             {typeof result.totalMinutesWorked === "number" ? (
               <p className="mt-1 text-sm text-muted-foreground">
                 Hours worked: {(result.totalMinutesWorked / 60).toFixed(1)}h
+              </p>
+            ) : null}
+            {typeof result.tasksReported === "number" ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                {result.tasksReported === 0
+                  ? "Daily report saved — no tasks today"
+                  : `Daily report saved — ${result.tasksReported} task${result.tasksReported === 1 ? "" : "s"}`}
               </p>
             ) : null}
             {result.clockOutStatus === "EARLY" ? (

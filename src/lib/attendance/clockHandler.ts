@@ -11,9 +11,14 @@ const bodySchema = z.object({
   attendanceId: z.string().min(3).max(40),
   qrSessionToken: z.string().min(10).max(200).optional(),
   earlyClockOutReason: z.string().max(400).optional(),
+  // Shape and limits are enforced by the engine (taskReportSchema) so a bad
+  // report gets a specific TASK_REPORT_INVALID rather than a generic 400.
+  tasks: z.array(z.unknown()).optional(),
+  noTasksReason: z.unknown().optional(),
 });
 
-const MAX_BODY_BYTES = 4096;
+// Fits a full daily task report (20 tasks x 500 characters) plus the rest of the body.
+const MAX_BODY_BYTES = 16_384;
 export const QR_SESSION_COOKIE = "attendance_qr_session";
 
 export async function handleClockRequest(request: NextRequest): Promise<NextResponse> {
@@ -56,6 +61,8 @@ export async function handleClockRequest(request: NextRequest): Promise<NextResp
     qrSessionToken: cookieToken ?? parsed.qrSessionToken ?? null,
     deviceId,
     earlyClockOutReason: parsed.earlyClockOutReason ?? null,
+    tasks: parsed.tasks,
+    noTasksReason: parsed.noTasksReason,
   });
 
   if (!result.ok) {
@@ -90,6 +97,7 @@ export async function handleClockRequest(request: NextRequest): Promise<NextResp
           clockInTime: formatInTimeZone(result.record.clockIn!, tz, "h:mm a"),
           totalMinutesWorked: result.record.totalMinutesWorked,
           clockOutStatus: result.record.clockOutStatus,
+          tasksReported: result.tasksReported,
         }
   );
   if (setDeviceIdCookie) response.cookies.set(DEVICE_ID_COOKIE, deviceId, DEVICE_ID_COOKIE_OPTIONS);

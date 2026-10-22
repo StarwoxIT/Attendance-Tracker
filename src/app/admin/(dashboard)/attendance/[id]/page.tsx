@@ -5,11 +5,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CorrectionForm } from "./CorrectionForm";
 import { reviewDeviceFlagAction } from "@/lib/actions/deviceFlags";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { TaskReportTasks } from "@/components/admin/TaskReportTasks";
+import { requireUser } from "@/lib/auth/guard";
+import { hasPermission } from "@/lib/auth/rbac";
 
 export const dynamic = "force-dynamic";
 
 export default async function AttendanceCorrectionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  const user = await requireUser();
+  // HR/Viewer can see attendance but not task reports — only load it for roles that may.
+  const canViewTaskReport = hasPermission(user.role, "taskReports", "view");
   const record = await prisma.attendanceRecord.findUnique({
     where: { id },
     include: {
@@ -20,6 +26,12 @@ export default async function AttendanceCorrectionPage({ params }: { params: Pro
     },
   });
   if (!record) notFound();
+  const taskReport = canViewTaskReport
+    ? await prisma.dailyTaskReport.findUnique({
+        where: { attendanceRecordId: record.id },
+        include: { tasks: { orderBy: { position: "asc" } } },
+      })
+    : null;
 
   return (
     <>
@@ -37,6 +49,24 @@ export default async function AttendanceCorrectionPage({ params }: { params: Pro
           </CardHeader>
           <CardContent className="text-sm">
             <p>&ldquo;{record.earlyClockOutReason}&rdquo;</p>
+          </CardContent>
+        </Card>
+      ) : null}
+      {canViewTaskReport && record.clockIn ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>What they worked on</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {taskReport ? (
+              <TaskReportTasks tasks={taskReport.tasks} noTasksReason={taskReport.noTasksReason} />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {record.clockOut
+                  ? "No task report — this clock-out was recorded without one (before reports were required, or added by an admin)."
+                  : "Not submitted yet — the report is filled in when the employee clocks out."}
+              </p>
+            )}
           </CardContent>
         </Card>
       ) : null}

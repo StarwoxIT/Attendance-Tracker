@@ -32,6 +32,9 @@ interface ExportedData {
   attendanceRecord: Prisma.AttendanceRecordCreateManyInput[];
   attendanceDeviceFlag: Prisma.AttendanceDeviceFlagCreateManyInput[];
   attendanceCorrection: Prisma.AttendanceCorrectionCreateManyInput[];
+  // Optional: absent from exports taken before daily task reports existed.
+  dailyTaskReport?: Prisma.DailyTaskReportCreateManyInput[];
+  dailyTask?: Prisma.DailyTaskCreateManyInput[];
   notification: Prisma.NotificationCreateManyInput[];
   auditLog: Prisma.AuditLogCreateManyInput[];
 }
@@ -73,11 +76,13 @@ async function main() {
   await prisma.attendanceRecord.createMany({ data: data.attendanceRecord, skipDuplicates: true });
   await prisma.attendanceDeviceFlag.createMany({ data: data.attendanceDeviceFlag, skipDuplicates: true });
   await prisma.attendanceCorrection.createMany({ data: data.attendanceCorrection, skipDuplicates: true });
+  await prisma.dailyTaskReport.createMany({ data: data.dailyTaskReport ?? [], skipDuplicates: true });
+  await prisma.dailyTask.createMany({ data: data.dailyTask ?? [], skipDuplicates: true });
   await prisma.notification.createMany({ data: data.notification, skipDuplicates: true });
   await prisma.auditLog.createMany({ data: data.auditLog, skipDuplicates: true });
 
   for (const [table, rows] of Object.entries(data)) {
-    console.log(`  ${table}: ${rows.length} row(s)`);
+    console.log(`  ${table}: ${rows?.length ?? 0} row(s)`);
   }
 
   console.log("\nImport complete. Sessions were not migrated — everyone (including you) needs to log in fresh.");

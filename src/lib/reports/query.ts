@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
-import type { Prisma } from "@prisma/client";
+import type { Prisma, TaskStatus } from "@prisma/client";
+import { TASK_STATUS_LABELS, TASK_STATUSES } from "@/lib/attendance/taskReport";
 import { formatInTimeZone } from "date-fns-tz";
 
 export interface DailyReportFilters {
@@ -122,4 +123,87 @@ export async function fetchMonthlyReportRows(month: string, officeId?: string): 
   }
 
   return rows.sort((a, b) => a.employee.localeCompare(b.employee));
+}
+
+export interface TaskReportFilters {
+  from?: string;
+  to?: string;
+  officeId?: string;
+  /** A TaskStatus to export only reports containing a task with that status, or "NONE" for only "no tasks today" reports. */
+  status?: string;
+}
+
+/** One row per employee per day: all of that day's tasks in a single cell, one per line,
+ * or the employee's explanation for a "no tasks today" report. */
+export interface TaskReportRow {
+  employee: string;
+  employeeNumber: string;
+  department: string;
+  office: string;
+  date: string;
+  submittedAt: string;
+  totalTasks: number;
+  completed: number;
+  partiallyCompleted: number;
+  carriedOver: number;
+  tasks: string;
+}
+
+export async function fetchTaskReportRows(filters: TaskReportFilters, timezone = "Africa/Lagos"): Promise<TaskReportRow[]> {
+  const taskStatus = TASK_STATUSES.includes(filters.status as TaskStatus) ? (filters.status as TaskStatus) : undefined;
+  const where: Prisma.DailyTaskReportWhereInput = {};
+  if (filters.from || filters.to) {
+    where.attendanceDate = {};
+    if (filters.from) where.attendanceDate.gte = new Date(`${filters.from}T00:00:00Z`);
+    if (filters.to) where.attendanceDate.lte = new Date(`${filters.to}T00:00:00Z`);
+  }
+  if (filters.officeId) where.attendanceRecord = { officeId: filters.officeId };
+  if (taskStatus) where.tasks = { some: { status: taskStatus } };
+  if (filters.status === "NONE") where.noTasksReason = { not: null };
+
+  const reports = await prisma.dailyTaskReport.findMany({
+    where,
+    include: {
+      employee: { include: { department: true } },
+      attendanceRecord: { include: { office: true } },
+      tasks: { orderBy: { position: "asc" } },
+    },
+    orderBy: [{ attendanceDate: "desc" }, { submittedAt: "asc" }],
+    take: 5000,
+  });
+
+  return reports.map((r) => {
+    const count = (status: TaskStatus) => r.tasks.filter((t) => t.status === status).length;
+    return {
+      employee: `${r.employee.firstName} ${r.employee.lastName}`,
+      employeeNumber: r.employee.employeeNumber,
+      department: r.employee.department?.name ?? "",
+      office: r.attendanceRecord.office.name,
+      date: r.attendanceDate.toISOString().slice(0, 10),
+      submittedAt: formatInTimeZone(r.submittedAt, timezone, "HH:mm"),
+      totalTasks: r.tasks.length,
+      completed: count("COMPLETED"),
+      partiallyCompleted: count("PARTIALLY_COMPLETED"),
+      carriedOver: count("CARRIED_OVER"),
+      tasks:
+        r.noTasksReason !== null
+          ? `No tasks to report: ${r.noTasksReason}`
+          : r.tasks.map((t, i) => `${i + 1}. ${t.description} (${TASK_STATUS_LABELS[t.status]})`).join("\n"),
+    };
+  });
+}
+
+/** Headline counts for the top of a task report export. */
+export function summarizeTaskReportRows(rows: TaskReportRow[]): string[] {
+  const sum = (pick: (r: TaskReportRow) => number) => rows.reduce((total, r) => total + pick(r), 0);
+  const counts: Record<TaskStatus, number> = {
+    COMPLETED: sum((r) => r.completed),
+    PARTIALLY_COMPLETED: sum((r) => r.partiallyCompleted),
+    CARRIED_OVER: sum((r) => r.carriedOver),
+  };
+  return [
+    `Reports: ${rows.length}`,
+    `Tasks: ${sum((r) => r.totalTasks)} (${TASK_STATUSES.map((s) => `${TASK_STATUS_LABELS[s]}: ${counts[s]}`).join(", ")})`,
+    `No tasks to report: ${rows.filter((r) => r.tasks.startsWith("No tasks to report:")).length}`,
+  ];
 }

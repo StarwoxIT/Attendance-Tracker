@@ -161,6 +161,7 @@ model Employee {
 
   attendanceRecords AttendanceRecord[]
   attendanceIdHistory AttendanceIdHistory[]
+  dailyTaskReports  DailyTaskReport[]
   deviceFlagsAsCurrent  AttendanceDeviceFlag[] @relation("DeviceFlagEmployee")
   deviceFlagsAsPrevious AttendanceDeviceFlag[] @relation("DeviceFlagPreviousEmployee")
   deletionRequests  EmployeeDeletionRequest[]
@@ -359,6 +360,7 @@ model AttendanceRecord {
 
   corrections AttendanceCorrection[]
   deviceFlags AttendanceDeviceFlag[]
+  taskReport  DailyTaskReport?
 
   @@unique([employeeId, attendanceDate])
   @@index([officeId, attendanceDate])
@@ -413,6 +415,57 @@ model AttendanceCorrection {
 
   @@index([attendanceRecordId])
   @@map("attendance_corrections")
+}
+
+// ---------------------------------------------------------------------------
+// Daily task reports
+// ---------------------------------------------------------------------------
+
+enum TaskStatus {
+  COMPLETED
+  PARTIALLY_COMPLETED
+  CARRIED_OVER
+}
+
+/**
+ * "What have you worked on today?" — submitted by the employee as part of
+ * clock-out, and written in the same transaction as the clock-out itself (see
+ * attendance/engine.ts), so a clocked-out record always has its report and a
+ * failed report save never leaves a completed clock-out behind. Kept separate
+ * from AttendanceRecord.earlyClockOutReason, which only explains leaving early.
+ * employeeId/attendanceDate duplicate the record's for direct querying.
+ */
+model DailyTaskReport {
+  id                 String   @id @default(cuid())
+  attendanceRecordId String   @unique
+  employeeId         String
+  attendanceDate     DateTime @db.Date
+  submittedAt        DateTime @default(now())
+  /// Set when the employee reported no tasks for the day — the report then has no DailyTask rows.
+  noTasksReason      String?  @db.VarChar(500)
+
+  attendanceRecord AttendanceRecord @relation(fields: [attendanceRecordId], references: [id], onDelete: Cascade)
+  employee         Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  tasks            DailyTask[]
+
+  @@index([attendanceDate])
+  @@index([employeeId, attendanceDate])
+  @@map("daily_task_reports")
+}
+
+model DailyTask {
+  id          String     @id @default(cuid())
+  reportId    String
+  // Order the employee listed the tasks in.
+  position    Int
+  description String     @db.VarChar(500)
+  status      TaskStatus
+
+  report DailyTaskReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@index([status])
+  @@map("daily_tasks")
 }
 
 // ---------------------------------------------------------------------------

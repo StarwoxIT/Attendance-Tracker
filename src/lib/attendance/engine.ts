@@ -14,6 +14,7 @@ import { hashAttendanceId, normalizeAttendanceId } from "@/lib/security/attendan
 import { checkRateLimit, RATE_LIMITS } from "@/lib/security/rateLimit";
 import { getActiveQrSession, consumeQrSession } from "@/lib/qr/session";
 import { flagDeviceReuseIfNeeded } from "./deviceFlags";
+import { parseDailyReport } from "./taskReport";
 import { notifyRole } from "@/lib/notifications/create";
 import type { AttendanceRecord, VerificationMethod } from "@prisma/client";
 
@@ -25,6 +26,8 @@ export type AttendanceDenialReason =
   | "QR_WRONG_OFFICE"
   | "NETWORK_DENIED"
   | "ALREADY_COMPLETE"
+  | "TASK_REPORT_REQUIRED"
+  | "TASK_REPORT_INVALID"
   | "EARLY_CLOCKOUT_REASON_REQUIRED";
 
 export type AttendanceActionResult =
@@ -39,6 +42,7 @@ export type AttendanceActionResult =
       action: "CLOCK_OUT";
       record: AttendanceRecord;
       firstName: string;
+      tasksReported: number;
     }
   | { ok: false; reason: AttendanceDenialReason; retryAfterSeconds?: number };
 
@@ -51,6 +55,11 @@ export interface RecordAttendanceInput {
   deviceId?: string | null;
   /** Required when clocking out before the scheduled end of day; ignored otherwise. */
   earlyClockOutReason?: string | null;
+  /** The "What have you worked on today?" report — required to clock out, ignored on clock-in.
+   * Untrusted client input, validated here against taskReportSchema. */
+  tasks?: unknown;
+  /** Sent instead of `tasks` when the employee had nothing to report — validated like `tasks`. */
+  noTasksReason?: unknown;
 }
 
 /** Alerts Super Admins the first time an office's clock-in is blocked because its
@@ -195,6 +204,16 @@ export async function recordAttendance(input: RecordAttendanceInput): Promise<At
       return { ok: true, action: "CLOCK_IN", record, firstName: employee.firstName };
     }
 
+    // The daily task report is checked before the early-departure reason, so the
+    // employee fills it in first; the reason (if needed) is a separate follow-up step.
+    if (input.tasks == null && input.noTasksReason == null) {
+      return { ok: false, reason: "TASK_REPORT_REQUIRED" };
+    }
+    const report = parseDailyReport(input.tasks, input.noTasksReason);
+    if (!report) {
+      return { ok: false, reason: "TASK_REPORT_INVALID" };
+    }
+
     const clockOutStatus = classifyClockOut(now, { ...settings, workEnd: employee.workEnd ?? settings.workEnd });
     let earlyClockOutReason: string | null = null;
     if (clockOutStatus === "EARLY") {
@@ -209,23 +228,38 @@ export async function recordAttendance(input: RecordAttendanceInput): Promise<At
     }
 
     const totalMinutesWorked = calculateMinutesWorked(existing.clockIn!, now);
-    const record = await prisma.attendanceRecord.update({
-      where: { id: existing.id },
-      data: {
-        clockOut: now,
-        clockOutStatus,
-        earlyClockOutReason,
-        clockOutIp: input.sourceIp,
-        clockOutUserAgent: input.userAgent,
-        clockOutNetworkId: officeNetworkId,
-        clockOutQrId: qrCodeId,
-        clockOutDeviceId: input.deviceId ?? null,
-        totalMinutesWorked,
-      },
+    // One transaction: the clock-out only commits if the task report saved, and a
+    // failed report leaves the record clocked-in so the employee can simply retry.
+    const record = await prisma.$transaction(async (tx) => {
+      await tx.dailyTaskReport.create({
+        data: {
+          attendanceRecordId: existing.id,
+          employeeId: employee.id,
+          attendanceDate: existing.attendanceDate,
+          noTasksReason: report.noTasksReason,
+          tasks: {
+            create: report.tasks.map((task, position) => ({ position, description: task.description, status: task.status })),
+          },
+        },
+      });
+      return tx.attendanceRecord.update({
+        where: { id: existing.id },
+        data: {
+          clockOut: now,
+          clockOutStatus,
+          earlyClockOutReason,
+          clockOutIp: input.sourceIp,
+          clockOutUserAgent: input.userAgent,
+          clockOutNetworkId: officeNetworkId,
+          clockOutQrId: qrCodeId,
+          clockOutDeviceId: input.deviceId ?? null,
+          totalMinutesWorked,
+        },
+      });
     });
 
     if (qrSessionId) await consumeQrSession(qrSessionId);
-    return { ok: true, action: "CLOCK_OUT", record, firstName: employee.firstName };
+    return { ok: true, action: "CLOCK_OUT", record, firstName: employee.firstName, tasksReported: report.tasks.length };
   } catch (err) {
     // A concurrent duplicate clock-in/out lost the race against our unique constraint.
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {

@@ -11,6 +11,12 @@ const describeIfDb = hasDb ? describe : describe.skip;
 
 const TZ = "Africa/Lagos";
 
+const TASKS = [
+  { description: "Reconciled vendor invoices", status: "COMPLETED" },
+  { description: "Drafted Q4 budget report", status: "PARTIALLY_COMPLETED" },
+  { description: "Supplier follow-up calls", status: "CARRIED_OVER" },
+];
+
 describeIfDb("recordAttendance — integration", () => {
   let officeId: string;
   let userId: string;
@@ -134,7 +140,11 @@ describeIfDb("recordAttendance — integration", () => {
 
       // The test clocks out seconds after clocking in, i.e. before workEnd (17:00) —
       // a reason is required, same as the real early-clock-out flow.
-      const second = await recordAttendance({ ...input, earlyClockOutReason: "Leaving early for a doctor's appointment" });
+      const second = await recordAttendance({
+        ...input,
+        tasks: TASKS,
+        earlyClockOutReason: "Leaving early for a doctor's appointment",
+      });
       expect(second.ok).toBe(true);
       if (second.ok) expect(second.action).toBe("CLOCK_OUT");
 
@@ -187,11 +197,11 @@ describeIfDb("recordAttendance — integration", () => {
       const clockIn = await recordAttendance(input);
       expect(clockIn.ok).toBe(true);
 
-      const withoutReason = await recordAttendance(input);
+      const withoutReason = await recordAttendance({ ...input, tasks: TASKS });
       expect(withoutReason.ok).toBe(false);
       if (!withoutReason.ok) expect(withoutReason.reason).toBe("EARLY_CLOCKOUT_REASON_REQUIRED");
 
-      const withReason = await recordAttendance({ ...input, earlyClockOutReason: "Feeling unwell" });
+      const withReason = await recordAttendance({ ...input, tasks: TASKS, earlyClockOutReason: "Feeling unwell" });
       expect(withReason.ok).toBe(true);
       if (withReason.ok && withReason.action === "CLOCK_OUT") {
         expect(withReason.record.clockOutStatus).toBe("EARLY");
@@ -262,6 +272,7 @@ describeIfDb("recordAttendance — integration", () => {
         sourceIp: "102.89.0.1",
         userAgent: "vitest",
         deviceId,
+        tasks: TASKS,
         earlyClockOutReason: "Personal errand",
       });
       expect(clockOut.ok).toBe(true);
@@ -308,11 +319,145 @@ describeIfDb("recordAttendance — integration", () => {
       const clockIn = await recordAttendance(input);
       expect(clockIn.ok).toBe(true);
 
-      const clockOut = await recordAttendance(input);
+      const clockOut = await recordAttendance({ ...input, tasks: TASKS });
       expect(clockOut.ok).toBe(true);
       if (clockOut.ok && clockOut.action === "CLOCK_OUT") {
         expect(clockOut.record.clockOutStatus).toBe("ON_TIME");
       }
+    });
+
+    describe("daily task report", () => {
+      // An employee whose scheduled end was an hour ago, so clock-out is ON_TIME and
+      // only the task report (not an early-departure reason) is in play.
+      async function clockedInEmployee() {
+        const pastEnd = formatInTimeZone(new Date(Date.now() - 60 * 60 * 1000), TZ, "HH:mm");
+        const made = await makeEmployee({ workEnd: pastEnd });
+        const input = { attendanceIdRaw: made.attendanceId, sourceIp: "102.89.0.1", userAgent: "vitest" };
+        const clockIn = await recordAttendance(input);
+        expect(clockIn.ok).toBe(true);
+        return { ...made, input };
+      }
+
+      async function recordFor(employeeId: string) {
+        return prisma.attendanceRecord.findFirstOrThrow({ where: { employeeId }, include: { taskReport: true } });
+      }
+
+      it("does not ask for a report on clock-in, and requires one before clock-out completes", async () => {
+        const { employee, input } = await clockedInEmployee();
+        expect((await recordFor(employee.id)).taskReport).toBeNull();
+
+        const withoutReport = await recordAttendance(input);
+        expect(withoutReport.ok).toBe(false);
+        if (!withoutReport.ok) expect(withoutReport.reason).toBe("TASK_REPORT_REQUIRED");
+
+        const record = await recordFor(employee.id);
+        expect(record.clockOut).toBeNull();
+        expect(record.taskReport).toBeNull();
+      });
+
+      it("saves multiple tasks with different statuses against the correct employee and attendance record", async () => {
+        const { employee, input } = await clockedInEmployee();
+
+        const result = await recordAttendance({ ...input, tasks: TASKS });
+        expect(result.ok).toBe(true);
+        if (result.ok && result.action === "CLOCK_OUT") expect(result.tasksReported).toBe(3);
+
+        const record = await recordFor(employee.id);
+        expect(record.clockOut).not.toBeNull();
+        const report = await prisma.dailyTaskReport.findUniqueOrThrow({
+          where: { attendanceRecordId: record.id },
+          include: { tasks: { orderBy: { position: "asc" } } },
+        });
+        expect(report.employeeId).toBe(employee.id);
+        expect(report.attendanceDate).toEqual(record.attendanceDate);
+        expect(report.tasks.map((t) => [t.description, t.status])).toEqual(TASKS.map((t) => [t.description, t.status]));
+        expect(report.noTasksReason).toBeNull();
+      });
+
+      it("lets an employee with no tasks clock out by explaining why", async () => {
+        const { employee, input } = await clockedInEmployee();
+
+        const result = await recordAttendance({ ...input, noTasksReason: "  No tasks were assigned to me today.  " });
+        expect(result.ok).toBe(true);
+        if (result.ok && result.action === "CLOCK_OUT") expect(result.tasksReported).toBe(0);
+
+        const record = await recordFor(employee.id);
+        expect(record.clockOut).not.toBeNull();
+        const report = await prisma.dailyTaskReport.findUniqueOrThrow({
+          where: { attendanceRecordId: record.id },
+          include: { tasks: true },
+        });
+        expect(report.employeeId).toBe(employee.id);
+        expect(report.noTasksReason).toBe("No tasks were assigned to me today.");
+        expect(report.tasks).toEqual([]);
+      });
+
+      it.each([
+        ["a blank no-tasks reason", { noTasksReason: "   " }],
+        ["an over-long no-tasks reason", { noTasksReason: "x".repeat(501) }],
+        ["both tasks and a no-tasks reason", { tasks: TASKS, noTasksReason: "Nothing today" }],
+      ])("rejects %s and leaves the employee clocked in to retry", async (_label, report) => {
+        const { employee, input } = await clockedInEmployee();
+
+        const invalid = await recordAttendance({ ...input, ...report });
+        expect(invalid.ok).toBe(false);
+        if (!invalid.ok) expect(invalid.reason).toBe("TASK_REPORT_INVALID");
+        expect((await recordFor(employee.id)).clockOut).toBeNull();
+
+        const retry = await recordAttendance({ ...input, noTasksReason: "No tasks were assigned to me today." });
+        expect(retry.ok).toBe(true);
+      });
+
+      it.each([
+        ["an empty list", []],
+        ["a blank description", [{ description: "   ", status: "COMPLETED" }]],
+        ["an unknown status", [{ description: "Did things", status: "DONE" }]],
+        ["a missing status", [{ description: "Did things" }]],
+        ["an over-long description", [{ description: "x".repeat(501), status: "COMPLETED" }]],
+      ])("rejects a report with %s and leaves the employee clocked in to retry", async (_label, tasks) => {
+        const { employee, input } = await clockedInEmployee();
+
+        const invalid = await recordAttendance({ ...input, tasks });
+        expect(invalid.ok).toBe(false);
+        if (!invalid.ok) expect(invalid.reason).toBe("TASK_REPORT_INVALID");
+        expect((await recordFor(employee.id)).clockOut).toBeNull();
+
+        const retry = await recordAttendance({ ...input, tasks: TASKS });
+        expect(retry.ok).toBe(true);
+        if (retry.ok) expect(retry.action).toBe("CLOCK_OUT");
+      });
+
+      it("does not save the report until an early clock-out's reason is also given", async () => {
+        const futureEnd = formatInTimeZone(new Date(Date.now() + 60 * 60 * 1000), TZ, "HH:mm");
+        const { employee, attendanceId } = await makeEmployee({ workEnd: futureEnd });
+        const input = { attendanceIdRaw: attendanceId, sourceIp: "102.89.0.1", userAgent: "vitest" };
+        await recordAttendance(input);
+
+        const needsReason = await recordAttendance({ ...input, tasks: TASKS });
+        expect(needsReason.ok).toBe(false);
+        if (!needsReason.ok) expect(needsReason.reason).toBe("EARLY_CLOCKOUT_REASON_REQUIRED");
+        expect((await recordFor(employee.id)).taskReport).toBeNull();
+
+        const done = await recordAttendance({ ...input, tasks: TASKS, earlyClockOutReason: "Feeling unwell" });
+        expect(done.ok).toBe(true);
+        const record = await recordFor(employee.id);
+        expect(record.earlyClockOutReason).toBe("Feeling unwell");
+        expect(record.taskReport).not.toBeNull();
+      });
+
+      it("rolls back the clock-out when the report fails to save", async () => {
+        const { employee, input } = await clockedInEmployee();
+        const record = await recordFor(employee.id);
+        // A report already attached to this record makes the engine's insert hit the
+        // unique constraint inside the transaction — standing in for any save failure.
+        await prisma.dailyTaskReport.create({
+          data: { attendanceRecordId: record.id, employeeId: employee.id, attendanceDate: record.attendanceDate },
+        });
+
+        const result = await recordAttendance({ ...input, tasks: TASKS });
+        expect(result.ok).toBe(false);
+        expect((await recordFor(employee.id)).clockOut).toBeNull();
+      });
     });
   });
 

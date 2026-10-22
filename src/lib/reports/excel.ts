@@ -19,9 +19,19 @@ export async function rowsToExcelBuffer<T extends object>(
     const headers = Object.keys(rows[0]!);
     const headerRow = sheet.addRow(headers);
     headerRow.font = { bold: true };
-    for (const row of rows) sheet.addRow(Object.values(row as Record<string, unknown>));
+    const wrappedColumns = new Set<number>();
+    for (const row of rows) {
+      const added = sheet.addRow(Object.values(row as Record<string, unknown>));
+      // Multi-line cells (e.g. a day's task list) only show their line breaks with wrapping on.
+      added.eachCell((cell, colNumber) => {
+        if (typeof cell.value === "string" && cell.value.includes("\n")) {
+          cell.alignment = { wrapText: true, vertical: "top" };
+          wrappedColumns.add(colNumber);
+        }
+      });
+    }
     headers.forEach((_, i) => {
-      sheet.getColumn(i + 1).width = 18;
+      sheet.getColumn(i + 1).width = wrappedColumns.has(i + 1) ? 60 : 18;
     });
   }
 

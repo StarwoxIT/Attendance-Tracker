@@ -41,6 +41,8 @@ async function main() {
   const attendanceRecord = await prisma.attendanceRecord.findMany();
   const attendanceDeviceFlag = await prisma.attendanceDeviceFlag.findMany();
   const attendanceCorrection = await prisma.attendanceCorrection.findMany();
+  const dailyTaskReport = await prisma.dailyTaskReport.findMany();
+  const dailyTask = await prisma.dailyTask.findMany();
   const notification = await prisma.notification.findMany();
   const auditLog = await prisma.auditLog.findMany();
 
@@ -61,6 +63,8 @@ async function main() {
     attendanceRecord,
     attendanceDeviceFlag,
     attendanceCorrection,
+    dailyTaskReport,
+    dailyTask,
     notification,
     auditLog,
   };

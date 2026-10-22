@@ -18,11 +18,11 @@ const DEFAULTS: Omit<CompanySettings, "id" | "updatedAt"> = {
 export async function getCompanySettings(): Promise<CompanySettings> {
   const existing = await prisma.companySettings.findUnique({ where: { id: SINGLETON_ID } });
   if (existing) return existing;
-  return prisma.companySettings.upsert({
-    where: { id: SINGLETON_ID },
-    create: { id: SINGLETON_ID, ...DEFAULTS },
-    update: {},
-  });
+  // ON CONFLICT DO NOTHING — concurrent first requests (e.g. layout + page on a
+  // fresh database) can both reach here; upsert with an empty update isn't
+  // atomic and would fail one of them on the unique id.
+  await prisma.companySettings.createMany({ data: [{ id: SINGLETON_ID, ...DEFAULTS }], skipDuplicates: true });
+  return prisma.companySettings.findUniqueOrThrow({ where: { id: SINGLETON_ID } });
 }
 
 /**

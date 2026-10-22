@@ -27,6 +27,8 @@ interface ReportPdfProps {
   summaryLines?: string[];
   headers: string[];
   rows: string[][];
+  /** Relative width per column (default 1 each), e.g. to give a long text column more room. */
+  columnFlex?: number[];
 }
 
 function ReportPdfDocument({
@@ -39,7 +41,9 @@ function ReportPdfDocument({
   summaryLines,
   headers,
   rows,
+  columnFlex,
 }: ReportPdfProps) {
+  const cellStyle = (column: number) => [styles.cell, { flex: columnFlex?.[column] ?? 1 }];
   return (
     <Document>
       <Page size="A4" orientation="landscape" style={styles.page}>
@@ -68,8 +72,8 @@ function ReportPdfDocument({
 
         <View style={styles.table}>
           <View style={styles.headerRow}>
-            {headers.map((h) => (
-              <Text key={h} style={styles.cell}>
+            {headers.map((h, j) => (
+              <Text key={h} style={cellStyle(j)}>
                 {h}
               </Text>
             ))}
@@ -77,7 +81,7 @@ function ReportPdfDocument({
           {rows.map((row, i) => (
             <View key={i} style={styles.row}>
               {row.map((cell, j) => (
-                <Text key={j} style={styles.cell}>
+                <Text key={j} style={cellStyle(j)}>
                   {cell}
                 </Text>
               ))}
@@ -110,6 +114,7 @@ export interface GenerateReportPdfParams {
   summaryLines?: string[];
   headers: string[];
   rows: string[][];
+  columnFlex?: number[];
 }
 
 export async function generateReportPdf(params: GenerateReportPdfParams): Promise<Buffer> {
@@ -125,6 +130,7 @@ export async function generateReportPdf(params: GenerateReportPdfParams): Promis
       generatedAt={new Date().toLocaleString()}
       headers={params.headers}
       rows={params.rows}
+      columnFlex={params.columnFlex}
     />
   );
   return renderToBuffer(doc);

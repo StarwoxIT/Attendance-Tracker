@@ -25,11 +25,9 @@ const DEFAULTS: Omit<AttendanceSettings, "id" | "updatedAt"> = {
 export async function getAttendanceSettings(): Promise<AttendanceSettings> {
   const existing = await prisma.attendanceSettings.findUnique({ where: { id: SINGLETON_ID } });
   if (existing) return existing;
-  return prisma.attendanceSettings.upsert({
-    where: { id: SINGLETON_ID },
-    create: { id: SINGLETON_ID, ...DEFAULTS },
-    update: {},
-  });
+  // ON CONFLICT DO NOTHING — see getCompanySettings for why this isn't an upsert.
+  await prisma.attendanceSettings.createMany({ data: [{ id: SINGLETON_ID, ...DEFAULTS }], skipDuplicates: true });
+  return prisma.attendanceSettings.findUniqueOrThrow({ where: { id: SINGLETON_ID } });
 }
 
 export async function updateAttendanceSettings(

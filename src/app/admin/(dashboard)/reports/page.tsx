@@ -1,13 +1,20 @@
 import { prisma } from "@/lib/db/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { formatInTimeZone } from "date-fns-tz";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { AttendanceReportForm } from "./AttendanceReportForm";
+import { ExportButtons, Field } from "./reportFields";
+import { requireUser } from "@/lib/auth/guard";
+import { hasPermission } from "@/lib/auth/rbac";
+import { TASK_STATUS_LABELS, TASK_STATUSES } from "@/lib/attendance/taskReport";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReportsPage() {
+  const user = await requireUser();
+  // HR/Viewer can export attendance but not task reports (the export route enforces this too).
+  const canViewTaskReports = hasPermission(user.role, "taskReports", "view");
   const [offices, employees] = await Promise.all([
     prisma.office.findMany({ orderBy: { name: "asc" } }),
     prisma.employee.findMany({
@@ -26,42 +33,47 @@ export default async function ReportsPage() {
       <div className="space-y-6 px-4 py-6 sm:px-6 md:px-8">
       <Card>
         <CardHeader>
-          <CardTitle>Daily attendance report</CardTitle>
+          <CardTitle>Attendance report</CardTitle>
         </CardHeader>
         <CardContent>
-          <form action="/api/reports/daily" className="flex flex-wrap items-end gap-2">
-            <Field label="From"><Input type="date" name="from" /></Field>
-            <Field label="To"><Input type="date" name="to" /></Field>
-            <Field label="Office">
-              <select name="officeId" className="h-9 rounded-md border border-input bg-background px-2 text-sm">
-                <option value="">All</option>
-                {offices.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-              </select>
-            </Field>
-            <ExportButtons />
-          </form>
+          <p className="mb-3 text-sm text-muted-foreground">
+            Daily lists every attendance record in the date range; Monthly summarises each employee&apos;s month.
+          </p>
+          <AttendanceReportForm offices={offices.map((o) => ({ id: o.id, name: o.name }))} currentMonth={currentMonth} />
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Monthly attendance report</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form action="/api/reports/monthly" className="flex flex-wrap items-end gap-2">
-            <Field label="Month">
-              <Input type="month" name="month" defaultValue={currentMonth} />
-            </Field>
-            <Field label="Office">
-              <select name="officeId" className="h-9 rounded-md border border-input bg-background px-2 text-sm">
-                <option value="">All</option>
-                {offices.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-              </select>
-            </Field>
-            <ExportButtons />
-          </form>
-        </CardContent>
-      </Card>
+      {canViewTaskReports ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Task report</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-3 text-sm text-muted-foreground">
+              What employees reported working on when clocking out — one row per person per day, with that day&apos;s
+              tasks and their statuses grouped together.
+            </p>
+            <form action="/api/reports/tasks" className="flex flex-wrap items-end gap-2">
+              <Field label="From"><Input type="date" name="from" /></Field>
+              <Field label="To"><Input type="date" name="to" /></Field>
+              <Field label="Office">
+                <select name="officeId" className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+                  <option value="">All</option>
+                  {offices.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
+              </Field>
+              <Field label="Status">
+                <select name="status" className="h-9 rounded-md border border-input bg-background px-2 text-sm">
+                  <option value="">All</option>
+                  {TASK_STATUSES.map((s) => <option key={s} value={s}>{TASK_STATUS_LABELS[s]}</option>)}
+                  <option value="NONE">No tasks to report</option>
+                </select>
+              </Field>
+              <ExportButtons />
+            </form>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -109,30 +121,5 @@ export default async function ReportsPage() {
       </Card>
       </div>
     </>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="mb-1 block text-xs font-medium text-muted-foreground">{label}</label>
-      {children}
-    </div>
-  );
-}
-
-function ExportButtons() {
-  return (
-    <div className="flex gap-2">
-      <Button type="submit" name="format" value="csv" size="sm" variant="outline">
-        CSV
-      </Button>
-      <Button type="submit" name="format" value="xlsx" size="sm" variant="outline">
-        Excel
-      </Button>
-      <Button type="submit" name="format" value="pdf" size="sm">
-        PDF
-      </Button>
-    </div>
   );
 }

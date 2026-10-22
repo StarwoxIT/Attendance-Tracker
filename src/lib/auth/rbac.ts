@@ -16,6 +16,8 @@ export const PERMISSIONS = {
   },
   attendance: { view: ["SUPER_ADMIN", "ADMIN", "HR", "VIEWER"], manage: ["SUPER_ADMIN", "ADMIN", "HR"] },
   deviceFlags: { view: ["SUPER_ADMIN", "ADMIN", "HR"], manage: ["SUPER_ADMIN", "ADMIN", "HR"] },
+  // Employees' daily "what I worked on" reports — Admin/Super Admin only.
+  taskReports: { view: ["SUPER_ADMIN", "ADMIN"] },
   reports: { view: ["SUPER_ADMIN", "ADMIN", "HR", "VIEWER"] },
   analytics: { view: ["SUPER_ADMIN", "ADMIN"] },
   qr: { view: ["SUPER_ADMIN", "ADMIN", "HR", "VIEWER"], manage: ["SUPER_ADMIN", "ADMIN"] },

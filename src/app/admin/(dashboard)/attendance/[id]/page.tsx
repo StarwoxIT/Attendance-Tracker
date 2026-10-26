@@ -8,6 +8,22 @@ import { PageHeader } from "@/components/admin/PageHeader";
 import { TaskReportTasks } from "@/components/admin/TaskReportTasks";
 import { requireUser } from "@/lib/auth/guard";
 import { hasPermission } from "@/lib/auth/rbac";
+import { getAttendanceSettings } from "@/lib/attendance/settings";
+import { formatInTimeZone } from "date-fns-tz";
+
+/** Correction history stores times as ISO instants — show them as office time. */
+function formatCorrectionValue(field: string, value: string | null, timezone: string): string {
+  if (!value) return "—";
+  if (field !== "clockIn" && field !== "clockOut") return value;
+  const instant = new Date(value);
+  return Number.isNaN(instant.getTime()) ? value : formatInTimeZone(instant, timezone, "d MMM yyyy, h:mm a");
+}
+
+/** "42 m from the office (±15 m)" for a QR + location clock-in/out, else null. */
+function locationNote(distance: number | null, accuracy: number | null): string | null {
+  if (distance == null) return null;
+  return `${distance} m from the office${accuracy != null ? ` (±${accuracy} m)` : ""}`;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +42,7 @@ export default async function AttendanceCorrectionPage({ params }: { params: Pro
     },
   });
   if (!record) notFound();
+  const { timezone } = await getAttendanceSettings();
   const taskReport = canViewTaskReport
     ? await prisma.dailyTaskReport.findUnique({
         where: { attendanceRecordId: record.id },
@@ -40,6 +57,19 @@ export default async function AttendanceCorrectionPage({ params }: { params: Pro
           {record.employee.firstName} {record.employee.lastName} — {record.attendanceDate.toISOString().slice(0, 10)}
         </h1>
         <p className="text-sm text-muted-foreground">{record.office.name}</p>
+        {record.clockInDistanceMeters != null || record.clockOutDistanceMeters != null ? (
+          <p className="text-sm text-muted-foreground">
+            QR + location —{" "}
+            {[
+              locationNote(record.clockInDistanceMeters, record.clockInLocationAccuracyMeters) &&
+                `clock-in ${locationNote(record.clockInDistanceMeters, record.clockInLocationAccuracyMeters)}`,
+              locationNote(record.clockOutDistanceMeters, record.clockOutLocationAccuracyMeters) &&
+                `clock-out ${locationNote(record.clockOutDistanceMeters, record.clockOutLocationAccuracyMeters)}`,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        ) : null}
       </PageHeader>
       <div className="space-y-6 px-4 py-6 sm:px-6 md:px-8">
       {record.clockOutStatus === "EARLY" ? (
@@ -120,7 +150,7 @@ export default async function AttendanceCorrectionPage({ params }: { params: Pro
           <CardTitle>Correct record</CardTitle>
         </CardHeader>
         <CardContent>
-          <CorrectionForm record={record} />
+          <CorrectionForm record={record} timezone={timezone} />
         </CardContent>
       </Card>
 
@@ -136,10 +166,11 @@ export default async function AttendanceCorrectionPage({ params }: { params: Pro
               {record.corrections.map((c) => (
                 <li key={c.id} className="border-b pb-2 last:border-0">
                   <p>
-                    <strong>{c.field}</strong>: {c.originalValue ?? "—"} → {c.newValue ?? "—"}
+                    <strong>{c.field}</strong>: {formatCorrectionValue(c.field, c.originalValue, timezone)} →{" "}
+                    {formatCorrectionValue(c.field, c.newValue, timezone)}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {c.changedBy.fullName} · {c.changedAt.toLocaleString()} · {c.reason}
+                    {c.changedBy.fullName} · {formatInTimeZone(c.changedAt, timezone, "d MMM yyyy, h:mm a")} · {c.reason}
                   </p>
                 </li>
               ))}

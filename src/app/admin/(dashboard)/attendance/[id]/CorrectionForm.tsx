@@ -5,17 +5,14 @@ import { correctAttendanceAction, type CorrectionState } from "@/lib/actions/att
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
+import { toDateTimeLocalValue } from "@/lib/attendance/rules";
 import type { AttendanceRecord } from "@prisma/client";
 
 const initialState: CorrectionState = {};
 
-function toLocalInputValue(date: Date | null): string {
-  if (!date) return "";
-  const tzOffsetMs = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - tzOffsetMs).toISOString().slice(0, 16);
-}
-
-export function CorrectionForm({ record }: { record: AttendanceRecord }) {
+/** Times are shown and entered as office wall-clock time in `timezone` (Attendance
+ * settings), whatever timezone the admin's own device is set to. */
+export function CorrectionForm({ record, timezone }: { record: AttendanceRecord; timezone: string }) {
   const action = correctAttendanceAction.bind(null, record.id);
   const [state, formAction, pending] = useActionState(action, initialState);
 
@@ -26,14 +23,15 @@ export function CorrectionForm({ record }: { record: AttendanceRecord }) {
 
   return (
     <form action={formAction} className="space-y-4">
+      <p className="text-xs text-muted-foreground">Times are in office time ({timezone}).</p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className="mb-1 block text-sm font-medium">Clock In</label>
-          <Input type="datetime-local" name="clockIn" defaultValue={toLocalInputValue(record.clockIn)} />
+          <Input type="datetime-local" name="clockIn" defaultValue={toDateTimeLocalValue(record.clockIn, timezone)} />
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium">Clock Out</label>
-          <Input type="datetime-local" name="clockOut" defaultValue={toLocalInputValue(record.clockOut)} />
+          <Input type="datetime-local" name="clockOut" defaultValue={toDateTimeLocalValue(record.clockOut, timezone)} />
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium">Status</label>

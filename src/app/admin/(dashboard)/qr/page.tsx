@@ -7,6 +7,7 @@ import { Pagination } from "@/components/admin/Pagination";
 import { PageSizeSelect } from "@/components/admin/PageSizeSelect";
 import { resolvePage, resolvePageSize } from "@/lib/pagination";
 import { GenerateQrForm, DeactivateQrButton } from "./QrActions";
+import { isPermanentQr } from "@/lib/qr/token";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ const STATUS_STYLES: Record<string, string> = {
 
 function dateRangeLabel(qr: { attendanceDate: Date; validUntil: Date }): string {
   const start = qr.attendanceDate.toISOString().slice(0, 10);
+  if (isPermanentQr(qr)) return `${start} – no expiry`;
   const end = qr.validUntil.toISOString().slice(0, 10);
   return start === end ? start : `${start} – ${end}`;
 }
@@ -58,7 +60,15 @@ export default async function QrPage({
           Attendance mode is <strong>{settings.attendanceMode.replace(/_/g, " ")}</strong>.{" "}
           {settings.attendanceMode === "QR_ONLY" ? (
             <span className="text-amber-700">
-              QR_ONLY provides weaker physical-presence verification than QR_AND_NETWORK.
+              QR + location relies on the location phones report, which a determined person can fake — the network
+              check is stronger, so keep this for when the office network is unavailable.
+            </span>
+          ) : null}
+          {settings.attendanceMode === "NETWORK_WITH_QR_BACKUP" || settings.attendanceMode === "QR_ONLY" ? (
+            <span>
+              {" "}
+              Generate a <strong>No expiry</strong> code for each office and print it. Scans only count from inside the
+              office location set on Offices &amp; Network.
             </span>
           ) : null}
         </p>
@@ -69,7 +79,13 @@ export default async function QrPage({
           <CardTitle>Generate QR</CardTitle>
         </CardHeader>
         <CardContent>
-          <GenerateQrForm offices={offices} todayStr={todayStr} />
+          <GenerateQrForm
+            offices={offices}
+            todayStr={todayStr}
+            defaultDuration={
+              settings.attendanceMode === "NETWORK_WITH_QR_BACKUP" || settings.attendanceMode === "QR_ONLY" ? "PERMANENT" : "DAY"
+            }
+          />
           {offices.length === 0 ? (
             <p className="mt-2 text-sm text-amber-700">Create an office first.</p>
           ) : null}

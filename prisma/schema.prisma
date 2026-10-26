@@ -90,6 +90,14 @@ model Office {
   address   String?
   timezone  String   @default("Africa/Lagos")
   isActive  Boolean  @default(true)
+  /// Where the office is, for QR + location attendance (lib/attendance/location.ts):
+  /// a scan only counts when the phone reports a position within the radius.
+  latitude             Float?
+  longitude            Float?
+  locationRadiusMeters Int       @default(150)
+  /// Admin switched the QR + location backup on by hand (for an outage the Network
+  /// Agent hasn't flagged yet, or an office without one); it lapses at this time.
+  qrBackupUntil        DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -234,7 +242,14 @@ model OfficeNetwork {
   id                     String        @id @default(cuid())
   officeId               String
   name                   String
+  /// Last IPv4 address the office was seen on. Starlink (like most ISPs now) gives
+  /// devices both IPv4 and IPv6 and each browser picks one per connection, so the
+  /// two families are learned and matched separately — see lib/network/matchIp.ts.
   currentPublicIp        String?
+  ipv4VerifiedAt         DateTime?
+  /// Last IPv6 address seen from the office; matched by its /64 network prefix.
+  currentPublicIpv6      String?
+  ipv6VerifiedAt         DateTime?
   cidr                   String?
   status                 NetworkStatus @default(UNVERIFIED)
   agentId                String?       @unique
@@ -319,6 +334,7 @@ enum VerificationMethod {
   NETWORK
   QR_NETWORK
   QR_ONLY
+  QR_LOCATION
   MANUAL_ADMIN
 }
 
@@ -351,6 +367,13 @@ model AttendanceRecord {
   clockInDeviceId       String?
   clockOutDeviceId      String?
   verificationMethod    VerificationMethod?
+  // QR + location check (lib/attendance/location.ts): how far the phone reported
+  // itself from the office, and how precise the reading was. Raw coordinates are
+  // deliberately not kept — distance is all an audit needs.
+  clockInDistanceMeters          Int?
+  clockInLocationAccuracyMeters  Int?
+  clockOutDistanceMeters         Int?
+  clockOutLocationAccuracyMeters Int?
   manualAdjustment      Boolean             @default(false)
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @updatedAt
@@ -560,7 +583,11 @@ model CompanySettings {
 
 enum AttendanceMode {
   NETWORK_ONLY
+  /// Office network as normal; a scan of the printed QR plus a location check is
+  /// accepted instead while the backup is on (see lib/attendance/qrBackup.ts).
+  NETWORK_WITH_QR_BACKUP
   QR_AND_NETWORK
+  /// QR scan plus a location check — no network needed.
   QR_ONLY
 }
 

@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
-import { isIpAuthorized } from "./matchIp";
+import { matchOfficeNetwork } from "./matchIp";
 import { getAttendanceSettings } from "@/lib/attendance/settings";
 
 export type NetworkVerificationResult =
@@ -26,35 +26,30 @@ export async function verifyOfficeNetwork(
 
   const staleThresholdMs = settings.networkStaleThresholdMinutes * 60_000;
   const now = Date.now();
+  const isStale = (verifiedAt: Date | null) => now - (verifiedAt?.getTime() ?? 0) > staleThresholdMs;
 
+  let matchedOnlyStale = false;
   for (const network of active) {
-    const lastVerifiedMs = network.lastVerifiedAt?.getTime() ?? 0;
-    const isStale = now - lastVerifiedMs > staleThresholdMs;
+    const match = matchOfficeNetwork(sourceIp, network);
+    if (!match) continue;
 
-    if (isStale && network.failMode === "FAIL_CLOSED") {
+    // Staleness is judged on the identity that matched: each learned address by
+    // its own family's last sighting (so a fresh IPv6 heartbeat can't keep a
+    // stale IPv4 address alive), an admin-entered CIDR by the network overall.
+    const verifiedAt: Date | null =
+      match === "IPV4" ? network.ipv4VerifiedAt : match === "IPV6" ? network.ipv6VerifiedAt : network.lastVerifiedAt;
+    if (isStale(verifiedAt) && network.failMode === "FAIL_CLOSED") {
+      matchedOnlyStale = true;
       continue; // never authorize on stale data when configured fail-closed
     }
-    if (isStale && network.failMode !== "FAIL_CLOSED") {
-      // FAIL_OPEN: still require an IP match against the last-known network, just
-      // don't hard-block purely for staleness. This never authorizes an
-      // unrelated random IP — it still must match currentPublicIp/cidr.
-    }
-
-    if (isIpAuthorized(sourceIp, network)) {
-      return { allowed: true, officeNetworkId: network.id };
-    }
+    // FAIL_OPEN: staleness alone doesn't block — the IP still had to match the
+    // last-known network, so this never authorizes an unrelated random IP.
+    return { allowed: true, officeNetworkId: network.id };
   }
 
-  const anyStaleFailClosed = active.some((n) => {
-    const lastVerifiedMs = n.lastVerifiedAt?.getTime() ?? 0;
-    return now - lastVerifiedMs > staleThresholdMs && n.failMode === "FAIL_CLOSED";
-  });
-  if (anyStaleFailClosed && active.every((n) => {
-    const lastVerifiedMs = n.lastVerifiedAt?.getTime() ?? 0;
-    return now - lastVerifiedMs > staleThresholdMs && n.failMode === "FAIL_CLOSED";
-  })) {
+  if (matchedOnlyStale || active.every((n) => isStale(n.lastVerifiedAt) && n.failMode === "FAIL_CLOSED")) {
     return { allowed: false, reason: "STALE_FAIL_CLOSED" };
   }
-
   return { allowed: false, reason: "IP_NOT_AUTHORIZED" };
 }
+

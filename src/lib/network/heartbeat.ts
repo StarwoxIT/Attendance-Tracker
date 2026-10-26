@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { verifyAgentSignature } from "./agentAuth";
+import { observedAddressUpdate } from "./matchIp";
 
 export type HeartbeatResult =
   | { ok: true }
@@ -17,7 +18,7 @@ export interface HeartbeatInput {
 /**
  * Processes an authenticated agent heartbeat. `sourceIp` (server-observed, from
  * getClientIp on the incoming request) — NOT `reportedIp` (the agent's own claim)
- * — becomes the office's authoritative currentPublicIp. This is what closes the
+ * — becomes the office's authoritative address for that IP family (IPv4 or IPv6). This is what closes the
  * loop on Starlink's dynamic IP without ever trusting client-supplied network data.
  */
 export async function processHeartbeat(input: HeartbeatInput): Promise<HeartbeatResult> {
@@ -41,7 +42,13 @@ export async function processHeartbeat(input: HeartbeatInput): Promise<Heartbeat
   if (!signatureValid) return { ok: false, reason: "BAD_SIGNATURE" };
 
   const now = new Date();
-  const ipChanged = network.currentPublicIp !== input.sourceIp;
+  const update = observedAddressUpdate(input.sourceIp, now);
+  // Compare against the same family's last address — an agent alternating between
+  // IPv4 and IPv6 heartbeats isn't an IP change.
+  const ipChanged =
+    "currentPublicIpv6" in update
+      ? network.currentPublicIpv6 !== update.currentPublicIpv6
+      : network.currentPublicIp !== update.currentPublicIp;
 
   await prisma.$transaction([
     prisma.networkHeartbeat.create({
@@ -56,11 +63,7 @@ export async function processHeartbeat(input: HeartbeatInput): Promise<Heartbeat
     }),
     prisma.officeNetwork.update({
       where: { id: network.id },
-      data: {
-        currentPublicIp: input.sourceIp,
-        lastVerifiedAt: now,
-        status: "VERIFIED",
-      },
+      data: update,
     }),
   ]);
 

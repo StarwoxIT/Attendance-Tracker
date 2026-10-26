@@ -17,10 +17,10 @@ async function actorIp(): Promise<string> {
 const genSchema = z.object({
   officeId: z.string().min(1),
   date: z.string().min(1),
-  duration: z.enum(["DAY", "WEEK", "MONTH"]).default("DAY"),
+  duration: z.enum(["DAY", "WEEK", "MONTH", "PERMANENT"]).default("DAY"),
 });
 
-function endDateFor(startDateKey: Date, duration: "DAY" | "WEEK" | "MONTH"): Date {
+function endDateFor(startDateKey: Date, duration: "DAY" | "WEEK" | "MONTH" | "PERMANENT"): Date {
   switch (duration) {
     case "WEEK":
       return addDays(startDateKey, 6);
@@ -34,6 +34,8 @@ function endDateFor(startDateKey: Date, duration: "DAY" | "WEEK" | "MONTH"): Dat
 
 export interface GenerateQrActionResult {
   artifactsFailed: boolean;
+  /** The code itself, shown right away so it can be saved even if PDF/PNG storage failed. */
+  pngDataUrl: string;
 }
 
 export async function generateQrAction(formData: FormData): Promise<GenerateQrActionResult> {
@@ -48,13 +50,14 @@ export async function generateQrAction(formData: FormData): Promise<GenerateQrAc
     officeId: parsed.officeId,
     attendanceDate: dateKey,
     validUntilDate,
+    permanent: parsed.duration === "PERMANENT",
     timezone: office.timezone,
     generatedById: user.id,
     actorIp: await actorIp(),
   });
 
   revalidatePath("/admin/qr");
-  return { artifactsFailed: result.artifactsFailed ?? false };
+  return { artifactsFailed: result.artifactsFailed ?? false, pngDataUrl: result.pngDataUrl };
 }
 
 export async function deactivateQrAction(qrId: string): Promise<void> {

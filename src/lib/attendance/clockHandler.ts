@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getClientIp } from "@/lib/network/getClientIp";
 import { recordAttendance } from "./engine";
-import { DENIAL_MESSAGES } from "./messages";
+import { denialMessage } from "./messages";
 import { formatInTimeZone } from "date-fns-tz";
 import { getAttendanceSettings } from "./settings";
 import { DEVICE_ID_COOKIE, DEVICE_ID_COOKIE_OPTIONS, generateDeviceId } from "@/lib/security/deviceId";
@@ -15,6 +15,8 @@ const bodySchema = z.object({
   // report gets a specific TASK_REPORT_INVALID rather than a generic 400.
   tasks: z.array(z.unknown()).optional(),
   noTasksReason: z.unknown().optional(),
+  // Validated by the engine (locationReadingSchema) — a malformed reading is treated as none.
+  location: z.unknown().optional(),
 });
 
 // Fits a full daily task report (20 tasks x 500 characters) plus the rest of the body.
@@ -63,12 +65,13 @@ export async function handleClockRequest(request: NextRequest): Promise<NextResp
     earlyClockOutReason: parsed.earlyClockOutReason ?? null,
     tasks: parsed.tasks,
     noTasksReason: parsed.noTasksReason,
+    location: parsed.location,
   });
 
   if (!result.ok) {
     const status = result.reason === "RATE_LIMITED" ? 429 : 403;
     const response = NextResponse.json(
-      { ok: false, reason: result.reason, message: DENIAL_MESSAGES[result.reason] },
+      { ok: false, reason: result.reason, message: denialMessage(result) },
       { status, headers: result.retryAfterSeconds ? { "Retry-After": String(result.retryAfterSeconds) } : {} }
     );
     if (setDeviceIdCookie) response.cookies.set(DEVICE_ID_COOKIE, deviceId, DEVICE_ID_COOKIE_OPTIONS);
@@ -88,6 +91,7 @@ export async function handleClockRequest(request: NextRequest): Promise<NextResp
           status: result.record.clockInStatus,
           attendanceType: result.record.attendanceType,
           minutesLate: result.record.minutesLate,
+          alreadyClockedIn: result.alreadyClockedIn ?? false,
         }
       : {
           ok: true,

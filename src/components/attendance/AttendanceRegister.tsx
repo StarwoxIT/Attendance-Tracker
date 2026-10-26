@@ -19,6 +19,8 @@ interface AttendanceRegisterProps {
   resetSeconds: number;
   initialError?: string | null;
   hasQrSession: boolean;
+  /** The scan has to be backed by the phone's location (QR only, or the QR backup). */
+  checkLocation: boolean;
 }
 
 type ClockResult =
@@ -32,6 +34,7 @@ type ClockResult =
       totalMinutesWorked?: number;
       clockOutStatus?: "EARLY" | "ON_TIME";
       tasksReported?: number;
+      alreadyClockedIn?: boolean;
     }
   | { ok: false; message: string };
 
@@ -61,15 +64,63 @@ const ERROR_MESSAGES: Record<string, string> = {
 // blip, server error, rate limit) keeps the report on screen so the employee can retry.
 const FINAL_DENIALS = new Set(["ALREADY_COMPLETE", "INVALID_EMPLOYEE"]);
 
+const REQUEST_TIMEOUT_MS = 20_000;
+
+// Denials an employee fixes by trying again where they stand (allow location, move
+// near a window) — kept on the ID screen with their ID still filled in.
+const LOCATION_DENIALS = new Set(["LOCATION_REQUIRED", "LOCATION_INACCURATE", "LOCATION_OUT_OF_RANGE"]);
+
+const LOCATION_TIMEOUT_MS = 15_000;
+/** A good reading is reused across the clock-out steps rather than re-fetched for each. */
+const LOCATION_REUSE_MS = 60_000;
+
+const LOCATION_ERRORS = {
+  denied:
+    "Location access is blocked, so we can't confirm you're at the office.\niPhone: Settings › Privacy & Security › Location Services › Safari Websites › While Using the App.\nAndroid: tap the icon left of the web address › Permissions › Location › Allow.\nThen try again.",
+  unavailable: "Your phone couldn't work out where you are.\nMake sure Location/GPS is turned on, then try again.",
+  timeout: "Finding your location took too long.\nMake sure Location/GPS is on, move near a window, and try again.",
+  unsupported: "This browser can't share your location.\nPlease open the QR link in Chrome or Safari and try again.",
+};
+
+interface LocationReading {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+}
+
+/** The phone's position, or why we couldn't get it. The server makes the actual decision. */
+function readLocation(): Promise<{ reading: LocationReading } | { error: string }> {
+  if (typeof navigator === "undefined" || !navigator.geolocation) {
+    return Promise.resolve({ error: LOCATION_ERRORS.unsupported });
+  }
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => resolve({ reading: { latitude: coords.latitude, longitude: coords.longitude, accuracy: coords.accuracy } }),
+      (err) =>
+        resolve({
+          error:
+            err.code === err.PERMISSION_DENIED
+              ? LOCATION_ERRORS.denied
+              : err.code === err.TIMEOUT
+                ? LOCATION_ERRORS.timeout
+                : LOCATION_ERRORS.unavailable,
+        }),
+      { enableHighAccuracy: true, timeout: LOCATION_TIMEOUT_MS, maximumAge: 0 }
+    );
+  });
+}
+
 export function AttendanceRegister({
   companyName,
   logoUrl,
   resetSeconds,
   initialError,
   hasQrSession,
+  checkLocation,
 }: AttendanceRegisterProps) {
   const [attendanceId, setAttendanceId] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [locating, setLocating] = useState(false);
   const [step, setStep] = useState<Step>("id");
   const [tasks, setTasks] = useState<TaskDraft[]>([]);
   const [reportMode, setReportMode] = useState<ReportMode>("tasks");
@@ -83,6 +134,7 @@ export function AttendanceRegister({
   const inputRef = useRef<HTMLInputElement>(null);
   const reasonRef = useRef<HTMLTextAreaElement>(null);
   const nextTaskKey = useRef(0);
+  const lastLocation = useRef<{ reading: LocationReading; at: number } | null>(null);
 
   useEffect(() => {
     if (step === "earlyReason") {
@@ -121,11 +173,40 @@ export function AttendanceRegister({
     setSubmitting(true);
     setStepError(null);
     const midClockOut = step !== "id";
+
+    let location: LocationReading | undefined;
+    let locationProblem: string | null = null;
+    if (checkLocation) {
+      const cached = lastLocation.current;
+      if (cached && Date.now() - cached.at < LOCATION_REUSE_MS) {
+        location = cached.reading;
+      } else {
+        setLocating(true);
+        const found = await readLocation();
+        setLocating(false);
+        if ("reading" in found) {
+          location = found.reading;
+          lastLocation.current = { reading: found.reading, at: Date.now() };
+        } else {
+          // Still sent: in the QR backup mode the office Wi-Fi alone may be enough,
+          // and the server is what decides. Its "location required" answer is then
+          // replaced by this more specific reason.
+          locationProblem = found.error;
+        }
+      }
+    }
+
+    // Give up on a stalled request instead of spinning forever (which is what sent
+    // people to the refresh button). Retrying is safe: a repeat of a clock-in that
+    // did go through is answered as "already clocked in", never a second record.
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
       const res = await fetch("/api/attendance/clock-in", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ attendanceId, ...payload }),
+        body: JSON.stringify({ attendanceId, ...payload, ...(location ? { location } : {}) }),
+        signal: controller.signal,
       });
       // A crashed request returns an HTML error page, not JSON — report it as a server error rather than a network one.
       const data = await res.json().catch(() => ({
@@ -133,9 +214,16 @@ export function AttendanceRegister({
         reason: "SERVER_ERROR",
         message: "Something went wrong on the server and nothing was saved. Please try again — if it keeps happening, tell your admin.",
       }));
+      if (!data.ok && LOCATION_DENIALS.has(data.reason)) {
+        // Whatever reading led here isn't worth reusing on the retry.
+        lastLocation.current = null;
+        if (data.reason === "LOCATION_REQUIRED" && locationProblem) data.message = locationProblem;
+      }
       if (data.ok) {
         resetFlow();
         setResult(data as ClockResult);
+      } else if (!midClockOut && LOCATION_DENIALS.has(data.reason)) {
+        setStepError(data.message);
       } else if (data.reason === "TASK_REPORT_REQUIRED") {
         setTasks((current) => (current.length > 0 ? current : [newTask()]));
         setStep("tasks");
@@ -147,14 +235,23 @@ export function AttendanceRegister({
         resetFlow();
         setResult({ ok: false, message: data.message ?? "Attendance could not be recorded." });
       }
-    } catch {
+    } catch (err) {
+      // Timed out or the connection dropped: we can't tell whether the server got
+      // it, so say so honestly — retrying is safe either way.
+      const message =
+        err instanceof DOMException && err.name === "AbortError"
+          ? "This is taking too long to respond. Please try again — if it already went through, you'll see that instead of a duplicate."
+          : checkLocation
+            ? "Connection problem — please check your phone's internet connection and try again. If it already went through, you'll see that instead of a duplicate."
+            : "Connection problem — please check you're on the office Wi-Fi and try again. If it already went through, you'll see that instead of a duplicate.";
       if (midClockOut) {
-        setStepError("Network error — your report hasn't been saved and you're still clocked in. Please try again.");
+        setStepError(message);
       } else {
         resetFlow();
-        setResult({ ok: false, message: "Network error. Please try again." });
+        setResult({ ok: false, message });
       }
     } finally {
+      clearTimeout(timeout);
       setSubmitting(false);
     }
   }
@@ -353,7 +450,7 @@ export function AttendanceRegister({
 
             <div className="mt-2 flex flex-col gap-2">
               <Button type="submit" size="xl" disabled={submitting}>
-                {submitting ? "Saving…" : "Submit Report & Clock Out"}
+                {locating ? "Checking your location…" : submitting ? "Saving…" : "Submit Report & Clock Out"}
               </Button>
               <Button type="button" variant="outline" size="xl" onClick={resetFlow}>
                 Cancel
@@ -402,7 +499,7 @@ export function AttendanceRegister({
                 size="xl"
                 disabled={submitting || wordCount === 0 || overLimit}
               >
-                {submitting ? "Please wait…" : "Confirm Clock Out Early"}
+                {locating ? "Checking your location…" : submitting ? "Please wait…" : "Confirm Clock Out Early"}
               </Button>
               <Button
                 type="button"
@@ -434,6 +531,7 @@ export function AttendanceRegister({
         {hasQrSession ? (
           <p className="mt-3 rounded-md bg-primary/10 px-3 py-2 text-sm text-primary">
             QR verified — enter your Attendance ID to continue.
+            {checkLocation ? " Your phone will ask for your location to confirm you're at the office." : null}
           </p>
         ) : null}
 
@@ -445,12 +543,20 @@ export function AttendanceRegister({
             autoComplete="off"
             placeholder="Enter your Attendance ID"
             value={attendanceId}
-            onChange={(e) => setAttendanceId(e.target.value)}
+            onChange={(e) => {
+              setAttendanceId(e.target.value);
+              setStepError(null);
+            }}
             className="h-14 text-center text-base tracking-wide uppercase sm:h-16 sm:text-xl sm:tracking-widest"
             maxLength={40}
           />
+          {stepError ? (
+            <p role="alert" className="whitespace-pre-line rounded-md bg-red-50 px-3 py-2 text-left text-sm text-red-700">
+              {stepError}
+            </p>
+          ) : null}
           <Button type="submit" size="xl" disabled={submitting || !attendanceId.trim()}>
-            {submitting ? "Please wait…" : "CLOCK IN / OUT"}
+            {locating ? "Checking your location…" : submitting ? "Please wait…" : "CLOCK IN / OUT"}
           </Button>
         </form>
         <p className="mt-3 text-xs text-muted-foreground">
@@ -497,6 +603,11 @@ function ResultScreen({ result }: { result: ClockResult }) {
             {result.status ? (
               <p className="mt-1 text-sm font-medium uppercase tracking-wide text-primary">
                 Status: {result.status.replace("_", " ")}
+              </p>
+            ) : null}
+            {result.alreadyClockedIn ? (
+              <p className="mt-2 text-sm text-muted-foreground">
+                You were already clocked in — nothing more to do. Come back here at the end of the day to clock out.
               </p>
             ) : null}
           </div>

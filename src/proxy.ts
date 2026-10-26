@@ -24,7 +24,9 @@ export function proxy(request: NextRequest) {
   response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-  response.headers.set("Permissions-Policy", "camera=(self), geolocation=(), microphone=()");
+  // geolocation=(self): QR + location attendance asks the employee's phone where it
+  // is, and the office location form can use the admin's position. Never third parties.
+  response.headers.set("Permissions-Policy", "camera=(self), geolocation=(self), microphone=()");
 
   // Assign the persistent device-tracking cookie on first visit to the register
   // flow, so it's already present by the time the employee submits a clock-in.

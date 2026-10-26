@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { fromZonedTime, formatInTimeZone } from "date-fns-tz";
-import { generateQrToken } from "./token";
+import { generateQrToken, PERMANENT_QR_VALID_UNTIL } from "./token";
 import { generateQrPdf, generateQrPngDataUrl } from "./pdf";
 import { uploadGeneratedBuffer } from "@/lib/storage/blob";
 import { getCompanySettings } from "@/lib/company/settings";
@@ -29,6 +29,9 @@ export interface GenerateQrParams {
   /** End of the validity window (inclusive, UTC-midnight date key). Defaults to
    * attendanceDate for a single-day QR. */
   validUntilDate?: Date;
+  /** A printed poster for QR + location attendance: valid from attendanceDate until
+   * deactivated or replaced, instead of until validUntilDate. */
+  permanent?: boolean;
   timezone: string;
   generatedById: string;
   actorIp?: string | null;
@@ -37,6 +40,9 @@ export interface GenerateQrParams {
 export interface GenerateQrResult {
   qrCode: AttendanceQrCode;
   rawToken: string;
+  /** The QR image itself, rendered without object storage, so the admin can always
+   * save/print it right after generating — the raw token is never stored to redo it. */
+  pngDataUrl: string;
   /** True when PDF/PNG rendering or upload failed — the QR itself is still valid for
    * clock-in, but there's nothing to print. Almost always an object-storage
    * misconfiguration (STORAGE_DRIVER and its related env vars); see the console.error
@@ -49,8 +55,10 @@ export interface GenerateQrResult {
 export async function generateDailyQr(params: GenerateQrParams): Promise<GenerateQrResult> {
   const { officeId, attendanceDate, generatedById, actorIp } = params;
   const timezone = params.timezone;
-  const validUntilDate = params.validUntilDate ?? attendanceDate;
-  const { validFrom, validUntil } = rangeBounds(attendanceDate, validUntilDate, timezone);
+  const validUntilDate = params.permanent ? PERMANENT_QR_VALID_UNTIL : (params.validUntilDate ?? attendanceDate);
+  const bounds = rangeBounds(attendanceDate, params.permanent ? attendanceDate : validUntilDate, timezone);
+  const validFrom = bounds.validFrom;
+  const validUntil = params.permanent ? PERMANENT_QR_VALID_UNTIL : bounds.validUntil;
   const now = new Date();
   const { rawToken, tokenHash, tokenIdentifier } = generateQrToken();
 
@@ -102,39 +110,45 @@ export async function generateDailyQr(params: GenerateQrParams): Promise<Generat
   // supplementary convenience — if object storage is briefly unavailable, generation
   // still succeeds with pdfUrl/pngUrl left null; the admin UI already handles that
   // (no broken download links) and can retry via Regenerate.
+  const pngDataUrl = await generateQrPngDataUrl(rawToken, appUrl());
   try {
-    const withArtifacts = await renderAndStoreQrArtifacts(qrCode, rawToken);
-    return { qrCode: withArtifacts, rawToken };
+    const withArtifacts = await renderAndStoreQrArtifacts(qrCode, rawToken, pngDataUrl);
+    return { qrCode: withArtifacts, rawToken, pngDataUrl };
   } catch (err) {
     console.error(
       `QR artifact rendering/upload failed (STORAGE_DRIVER=${process.env.STORAGE_DRIVER ?? "unset"}); QR code is still valid without PDF/PNG.`,
       err
     );
-    return { qrCode, rawToken, artifactsFailed: true };
+    return { qrCode, rawToken, pngDataUrl, artifactsFailed: true };
   }
 }
 
 /** Renders the PDF/PNG once at generation time and stores them — see the pdfUrl/pngUrl schema comment for why. */
-async function renderAndStoreQrArtifacts(qrCode: AttendanceQrCode, rawToken: string): Promise<AttendanceQrCode> {
+/** The deployed site the printed code points at (APP_URL in production). */
+function appUrl(): string {
+  return process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+}
+
+async function renderAndStoreQrArtifacts(
+  qrCode: AttendanceQrCode,
+  rawToken: string,
+  pngDataUrl: string
+): Promise<AttendanceQrCode> {
   const [company, office] = await Promise.all([
     getCompanySettings(),
     prisma.office.findUniqueOrThrow({ where: { id: qrCode.officeId } }),
   ]);
-  const appUrl = process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
-  const [pdfBuffer, pngDataUrl] = await Promise.all([
-    generateQrPdf({
-      companyName: company.companyName,
-      logoUrl: company.logoUrl,
-      officeName: office.name,
-      attendanceDate: qrCode.attendanceDate,
-      validUntil: qrCode.validUntil,
-      timezone: office.timezone,
-      rawToken,
-      appUrl,
-    }),
-    generateQrPngDataUrl(rawToken, appUrl),
-  ]);
+  const pdfBuffer = await generateQrPdf({
+    companyName: company.companyName,
+    logoUrl: company.logoUrl,
+    officeName: office.name,
+    attendanceDate: qrCode.attendanceDate,
+    validUntil: qrCode.validUntil,
+    timezone: office.timezone,
+    rawToken,
+    appUrl: appUrl(),
+  });
 
   const pngBuffer = Buffer.from(pngDataUrl.split(",")[1]!, "base64");
   const base = `qr-codes/${qrCode.officeId}/${qrCode.id}`;

@@ -2,15 +2,57 @@ import { prisma } from "@/lib/db/prisma";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CreateNetworkForm, NetworkRow } from "./NetworkAgentPanel";
 import { CreateOfficeForm } from "./CreateOfficeForm";
+import { CreateDepartmentForm } from "./CreateDepartmentForm";
 import { PageHeader } from "@/components/admin/PageHeader";
+import { requireUser } from "@/lib/auth/guard";
+import { hasPermission } from "@/lib/auth/rbac";
+import { formatInTimeZone } from "date-fns-tz";
+import { getAttendanceSettings } from "@/lib/attendance/settings";
+import { qrBackupState, type QrBackupState } from "@/lib/attendance/qrBackup";
+import { OfficeLocationPanel, type QrBackupStatus } from "./OfficeLocationPanel";
+
+function describeQrBackup(state: QrBackupState, timezone: string): QrBackupStatus {
+  switch (state.reason) {
+    case "MANUAL":
+      return { active: true, manual: true, text: `On — switched on by an admin until ${formatInTimeZone(state.until, timezone, "h:mm a")} today` };
+    case "NETWORK_OFFLINE":
+      return {
+        active: true,
+        manual: false,
+        text: state.lastSeenAt
+          ? `On automatically — the Network Agent hasn't checked in since ${formatInTimeZone(state.lastSeenAt, timezone, "d MMM, h:mm a")}`
+          : "On automatically — the Network Agent hasn't checked in yet",
+      };
+    case "NETWORK_ONLINE":
+      return { active: false, manual: false, text: "Off — the office network is online" };
+    case "NO_AGENT":
+      return {
+        active: false,
+        manual: false,
+        text: "Off — this office has no Network Agent to detect an outage, so the backup only opens when switched on here",
+      };
+  }
+}
 
 export const dynamic = "force-dynamic";
 
 export default async function OfficesPage() {
-  const offices = await prisma.office.findMany({
-    include: { officeNetworks: true, _count: { select: { employees: true } } },
-    orderBy: { createdAt: "asc" },
-  });
+  const user = await requireUser();
+  // Departments are an employee attribute, so whoever can manage employees (incl. HR) can add them.
+  const canManageDepartments = hasPermission(user.role, "employees", "manage");
+  const canManageOffices = hasPermission(user.role, "offices", "manage");
+  const [offices, departments, settings] = await Promise.all([
+    prisma.office.findMany({
+      include: { officeNetworks: true, _count: { select: { employees: true } } },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.department.findMany({
+      include: { _count: { select: { employees: { where: { isDeleted: false } } } } },
+      orderBy: { name: "asc" },
+    }),
+    getAttendanceSettings(),
+  ]);
+  const usesQrBackup = settings.attendanceMode === "NETWORK_WITH_QR_BACKUP";
 
   return (
     <>
@@ -58,11 +100,52 @@ export default async function OfficesPage() {
                 </div>
               )}
               <CreateNetworkForm officeId={office.id} />
+              <OfficeLocationPanel
+                officeId={office.id}
+                latitude={office.latitude}
+                longitude={office.longitude}
+                radiusMeters={office.locationRadiusMeters}
+                backup={
+                  usesQrBackup
+                    ? describeQrBackup(
+                        qrBackupState(office, office.officeNetworks, settings.networkStaleThresholdMinutes),
+                        settings.timezone
+                      )
+                    : null
+                }
+                canManage={canManageOffices}
+              />
             </CardContent>
           </Card>
         ))}
         {offices.length === 0 ? <p className="text-sm text-muted-foreground">No offices yet.</p> : null}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Departments</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            These appear in the Department dropdown when adding or editing an employee.
+          </p>
+          {departments.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No departments yet.</p>
+          ) : (
+            <ul className="flex flex-wrap gap-2">
+              {departments.map((d) => (
+                <li key={d.id} className="rounded-full border px-3 py-1 text-sm">
+                  {d.name}{" "}
+                  <span className="text-muted-foreground">
+                    · {d._count.employees} employee{d._count.employees === 1 ? "" : "s"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {canManageDepartments ? <CreateDepartmentForm /> : null}
+        </CardContent>
+      </Card>
       </div>
     </>
   );

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { formatInTimeZone } from "date-fns-tz";
+import { getAttendanceSettings } from "@/lib/attendance/settings";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { Pagination } from "@/components/admin/Pagination";
 import { PageSizeSelect } from "@/components/admin/PageSizeSelect";
@@ -56,6 +57,7 @@ export default async function AttendanceListPage({
   if (flagged === "unreviewed") where.deviceFlags = { some: { reviewed: false } };
   else if (flagged === "any") where.deviceFlags = { some: {} };
 
+  const { timezone } = await getAttendanceSettings();
   const [records, total] = await Promise.all([
     prisma.attendanceRecord.findMany({
       where,
@@ -134,9 +136,9 @@ export default async function AttendanceListPage({
                 </span>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                <span>In: {r.clockIn ? formatInTimeZone(r.clockIn, "Africa/Lagos", "h:mm a") : "—"}</span>
+                <span>In: {r.clockIn ? formatInTimeZone(r.clockIn, timezone, "h:mm a") : "—"}</span>
                 <span>
-                  Out: {r.clockOut ? formatInTimeZone(r.clockOut, "Africa/Lagos", "h:mm a") : r.clockIn ? "Missing" : "—"}
+                  Out: {r.clockOut ? formatInTimeZone(r.clockOut, timezone, "h:mm a") : r.clockIn ? "Missing" : "—"}
                 </span>
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -193,9 +195,9 @@ export default async function AttendanceListPage({
                   {r.employee.firstName} {r.employee.lastName}
                 </td>
                 <td className="px-4 py-2">{r.office.name}</td>
-                <td className="px-4 py-2">{r.clockIn ? formatInTimeZone(r.clockIn, "Africa/Lagos", "h:mm a") : "—"}</td>
+                <td className="px-4 py-2">{r.clockIn ? formatInTimeZone(r.clockIn, timezone, "h:mm a") : "—"}</td>
                 <td className="px-4 py-2">
-                  {r.clockOut ? formatInTimeZone(r.clockOut, "Africa/Lagos", "h:mm a") : r.clockIn ? "Missing" : "—"}
+                  {r.clockOut ? formatInTimeZone(r.clockOut, timezone, "h:mm a") : r.clockIn ? "Missing" : "—"}
                   {r.clockOutStatus === "EARLY" ? (
                     <span
                       className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"

@@ -9,6 +9,7 @@ import { StatusButtons } from "./StatusButtons";
 import { DeleteEmployeeForm } from "./DeleteEmployeeForm";
 import { ReviewDeletionForm } from "../../deletion-requests/ReviewDeletionForm";
 import { formatInTimeZone } from "date-fns-tz";
+import { getAttendanceSettings } from "@/lib/attendance/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   const { id } = await params;
   const actor = await requireUser();
 
+  const { timezone } = await getAttendanceSettings();
   const [employee, offices, departments, history, latestDeletionRequest] = await Promise.all([
     prisma.employee.findUnique({ where: { id }, include: { office: true, department: true } }),
     prisma.office.findMany({ orderBy: { name: "asc" } }),
@@ -138,9 +140,9 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
               {history.map((r) => (
                 <tr key={r.id} className="border-b last:border-0">
                   <td className="py-2 pr-4">{r.attendanceDate.toISOString().slice(0, 10)}</td>
-                  <td className="py-2 pr-4">{r.clockIn ? formatInTimeZone(r.clockIn, "Africa/Lagos", "h:mm a") : "—"}</td>
+                  <td className="py-2 pr-4">{r.clockIn ? formatInTimeZone(r.clockIn, timezone, "h:mm a") : "—"}</td>
                   <td className="py-2 pr-4">
-                    {r.clockOut ? formatInTimeZone(r.clockOut, "Africa/Lagos", "h:mm a") : "—"}
+                    {r.clockOut ? formatInTimeZone(r.clockOut, timezone, "h:mm a") : "—"}
                     {r.clockOutStatus === "EARLY" ? (
                       <span
                         className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"

@@ -12,6 +12,15 @@
 2. Check `AttendanceSettings.attendanceMode` — if it's not what you expect, Settings →
    Attendance rules.
 
+## Denied for *some* people or browsers, and a refresh sometimes fixes it
+
+Almost always IPv4 vs IPv6: Starlink gives devices both, and each browser picks one per
+connection, so an office with only one of the two captured refuses everyone whose browser
+picked the other. Offices & Network shows both (`IPv4: … · IPv6: …/64`) and warns when one is
+missing. The Network Agent captures both automatically (update `agent.py` if it predates
+this); with the manual **Authorize This Network Now** button, click it again from a
+different browser or device on the office Wi-Fi until both are filled in.
+
 ## Network Agent offline / STALE
 
 - **Starlink IP changed and the agent hasn't caught up**: heartbeats run every
@@ -54,6 +63,17 @@
 - **QR scans fine but attendance still gets denied**: in `QR_AND_NETWORK` mode the office
   network check still applies after a successful scan — see the network troubleshooting steps
   above.
+- **"Your location is outside the office area" for someone who is at the office**: check the
+  office's pin with **Check on map** (Offices & Network). If it's right, raise the radius a
+  little: indoor GPS is often 20–60 m off, worse during a power cut when the phone can't use
+  nearby Wi-Fi to place itself. Each record shows how far away the phone said it was.
+- **"Location access is blocked"**: the employee denied the browser's prompt once and it
+  remembers. iPhone: Settings › Privacy & Security › Location Services › Safari Websites ›
+  While Using the App. Android: the icon left of the web address › Permissions › Location.
+- **"The QR code backup isn't open right now"** (mode *Network, with QR + location backup*):
+  the backup only opens when the office's Network Agent stops checking in, or when an admin
+  clicks **Switch on for today** on Offices & Network. An office with no Network Agent never
+  opens it automatically.
 
 ## Build/deploy issues
 

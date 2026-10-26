@@ -9,6 +9,10 @@ import { recordAuditLog } from "@/lib/audit/log";
 import { generateRegistrationToken } from "@/lib/network/agentAuth";
 import { getClientIpFromHeaders } from "@/lib/network/getClientIp";
 import { nanoid } from "nanoid";
+import { ipFamily, observedAddressUpdate, type IpFamily } from "@/lib/network/matchIp";
+import { getAttendanceSettings } from "@/lib/attendance/settings";
+import { endOfOfficeDay } from "@/lib/attendance/qrBackup";
+import { MAX_OFFICE_RADIUS_METERS, MIN_OFFICE_RADIUS_METERS } from "@/lib/attendance/location";
 
 async function actorIp(): Promise<string> {
   const hdrs = await headers();
@@ -41,20 +45,27 @@ export async function createOfficeAction(formData: FormData): Promise<void> {
   revalidatePath("/admin/offices");
 }
 
-const departmentSchema = z.object({ name: z.string().min(1).max(80) });
+const departmentSchema = z.object({ name: z.string().trim().min(1, "Enter a department name.").max(80) });
 
 export async function createDepartmentAction(formData: FormData): Promise<void> {
   const user = await requirePermission("employees", "manage");
-  const parsed = departmentSchema.parse(Object.fromEntries(formData));
+  const parsed = departmentSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? "Invalid department name.");
 
-  const dept = await prisma.department.create({ data: { name: parsed.name } });
+  // Names are unique in the database; also catch "hr" vs "HR" so the dropdown doesn't get near-duplicates.
+  const existing = await prisma.department.findFirst({
+    where: { name: { equals: parsed.data.name, mode: "insensitive" } },
+  });
+  if (existing) throw new Error(`"${existing.name}" already exists.`);
+
+  const dept = await prisma.department.create({ data: { name: parsed.data.name } });
 
   await recordAuditLog({
     userId: user.id,
     action: "department.created",
     resource: "department",
     resourceId: dept.id,
-    newValue: { name: parsed.name },
+    newValue: { name: parsed.data.name },
     ipAddress: await actorIp(),
   });
 
@@ -163,6 +174,10 @@ export async function setNetworkFailModeAction(networkId: string, failMode: "FAI
 
 export interface AuthorizeNetworkResult {
   ip: string;
+  family: IpFamily;
+  /** Whether the network now has an address for each family — browsers can use either. */
+  hasIpv4: boolean;
+  hasIpv6: boolean;
 }
 
 /**
@@ -172,8 +187,9 @@ export interface AuthorizeNetworkResult {
  * *their own* current request IP — via the same trusted getClientIp() path
  * every other security decision uses, never a client-supplied value — and
  * sets it as the office's authorized network. Nothing else about attendance
- * verification changes; this just populates OfficeNetwork.currentPublicIp
- * through a different (manual) route than an agent heartbeat would.
+ * verification changes; this just records the office's address (IPv4 or IPv6,
+ * whichever this request used) through a different (manual) route than an agent
+ * heartbeat would.
  */
 export async function authorizeCurrentNetworkAction(networkId: string): Promise<AuthorizeNetworkResult> {
   const user = await requirePermission("network", "manage");
@@ -186,7 +202,7 @@ export async function authorizeCurrentNetworkAction(networkId: string): Promise<
 
   const network = await prisma.officeNetwork.update({
     where: { id: networkId },
-    data: { currentPublicIp: ip, lastVerifiedAt: new Date(), status: "VERIFIED" },
+    data: observedAddressUpdate(ip, new Date()),
   });
 
   // Recorded as a heartbeat too (not just the audit log) so "View Heartbeats" history
@@ -212,5 +228,65 @@ export async function authorizeCurrentNetworkAction(networkId: string): Promise<
   });
 
   revalidatePath("/admin/offices");
-  return { ip };
+  return {
+    ip,
+    family: ipFamily(ip) ?? 4,
+    hasIpv4: !!network.currentPublicIp,
+    hasIpv6: !!network.currentPublicIpv6,
+  };
+}
+
+const officeLocationSchema = z.object({
+  latitude: z.coerce.number().finite().min(-90).max(90),
+  longitude: z.coerce.number().finite().min(-180).max(180),
+  locationRadiusMeters: z.coerce.number().int().min(MIN_OFFICE_RADIUS_METERS).max(MAX_OFFICE_RADIUS_METERS),
+});
+
+export async function updateOfficeLocationAction(officeId: string, formData: FormData): Promise<{ error?: string }> {
+  const user = await requirePermission("offices", "manage");
+  const parsed = officeLocationSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return {
+      error: `Enter a latitude (−90 to 90), a longitude (−180 to 180) and a radius of ${MIN_OFFICE_RADIUS_METERS}–${MAX_OFFICE_RADIUS_METERS} m.`,
+    };
+  }
+
+  const before = await prisma.office.findUniqueOrThrow({
+    where: { id: officeId },
+    select: { latitude: true, longitude: true, locationRadiusMeters: true },
+  });
+  await prisma.office.update({ where: { id: officeId }, data: parsed.data });
+
+  await recordAuditLog({
+    userId: user.id,
+    action: "office.location_updated",
+    resource: "office",
+    resourceId: officeId,
+    oldValue: before,
+    newValue: parsed.data,
+    ipAddress: await actorIp(),
+  });
+
+  revalidatePath("/admin/offices");
+  return {};
+}
+
+/** The manual side of the QR + location backup — see lib/attendance/qrBackup.ts. */
+export async function setQrBackupAction(officeId: string, on: boolean): Promise<void> {
+  const user = await requirePermission("offices", "manage");
+  const settings = await getAttendanceSettings();
+  const qrBackupUntil = on ? endOfOfficeDay(new Date(), settings.timezone) : null;
+
+  await prisma.office.update({ where: { id: officeId }, data: { qrBackupUntil } });
+
+  await recordAuditLog({
+    userId: user.id,
+    action: on ? "office.qr_backup_on" : "office.qr_backup_off",
+    resource: "office",
+    resourceId: officeId,
+    newValue: { qrBackupUntil: qrBackupUntil?.toISOString() ?? null },
+    ipAddress: await actorIp(),
+  });
+
+  revalidatePath("/admin/offices");
 }

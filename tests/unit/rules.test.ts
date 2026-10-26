@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { fromZonedTime } from "date-fns-tz";
-import { classifyClockIn, calculateMinutesWorked, isWeekend, getAttendanceDateKey } from "@/lib/attendance/rules";
+import {
+  classifyClockIn,
+  calculateMinutesWorked,
+  isWeekend,
+  getAttendanceDateKey,
+  fromDateTimeLocalValue,
+  toDateTimeLocalValue,
+} from "@/lib/attendance/rules";
 
 const TZ = "Africa/Lagos";
 const SETTINGS = { timezone: TZ, workStart: "09:00", gracePeriodMinutes: 15 };
@@ -107,5 +114,32 @@ describe("getAttendanceDateKey", () => {
     // 11:30 PM Lagos on Aug 19 is still Aug 19 UTC+1, well before midnight UTC.
     const late = lagosTime("2026-08-19", "23:30");
     expect(getAttendanceDateKey(late, TZ).toISOString().slice(0, 10)).toBe("2026-08-19");
+  });
+});
+
+describe("admin-entered correction times (datetime-local)", () => {
+  // Regression: these used to be parsed with `new Date(value)`, i.e. in the server's
+  // own timezone. Production servers run on UTC, so 09:00 typed for a Lagos office
+  // (UTC+1) was saved as 09:00 UTC and displayed as 10:00 — one hour late.
+  it("reads the entered time as office time, whatever timezone the server runs in", () => {
+    expect(fromDateTimeLocalValue("2026-10-26T09:00", "Africa/Lagos")?.toISOString()).toBe("2026-10-26T08:00:00.000Z");
+    expect(fromDateTimeLocalValue("2026-10-26T17:30", "Africa/Lagos")?.toISOString()).toBe("2026-10-26T16:30:00.000Z");
+  });
+
+  it("round-trips: the form shows exactly the time that was entered", () => {
+    for (const entered of ["2026-10-26T09:00", "2026-10-26T00:15", "2026-12-31T23:45"]) {
+      const saved = fromDateTimeLocalValue(entered, "Africa/Lagos");
+      expect(toDateTimeLocalValue(saved, "Africa/Lagos")).toBe(entered);
+    }
+  });
+
+  it("rejects malformed values instead of saving a wrong time", () => {
+    expect(fromDateTimeLocalValue("26/10/2026 09:00", "Africa/Lagos")).toBeNull();
+    expect(fromDateTimeLocalValue("2026-10-26", "Africa/Lagos")).toBeNull();
+    expect(fromDateTimeLocalValue("", "Africa/Lagos")).toBeNull();
+  });
+
+  it("leaves the field blank when there is no time yet", () => {
+    expect(toDateTimeLocalValue(null, "Africa/Lagos")).toBe("");
   });
 });

@@ -78,31 +78,42 @@ interface DemoEmployee {
   lastSeenDaysAgo?: number;
 }
 
-const DEPARTMENTS = ["Engineering", "Finance", "Human Resources", "Operations", "Sales", "Customer Support"];
+// The company's real departments — the same list the seed_company_departments migration adds.
+const DEPARTMENTS = [
+  "Creative Department",
+  "Development (Dev) Team",
+  "Data Team",
+  "Engineering",
+  "Administrative Assistance",
+  "HR",
+  "Operations",
+  "Finance",
+  "Logistics",
+];
 
 const EMPLOYEES: DemoEmployee[] = [
   { firstName: "Adaeze", lastName: "Okonkwo", department: "Engineering", office: "lagos", jobTitle: "Engineering Manager", punctuality: "star" },
-  { firstName: "Tunde", lastName: "Bakare", department: "Engineering", office: "lagos", jobTitle: "Backend Engineer", punctuality: "good" },
-  { firstName: "Chiamaka", lastName: "Eze", department: "Engineering", office: "lagos", jobTitle: "Frontend Engineer", punctuality: "average", workArrangement: "HYBRID", onSiteDays: [1, 3, 5] },
+  { firstName: "Tunde", lastName: "Bakare", department: "Development (Dev) Team", office: "lagos", jobTitle: "Backend Developer", punctuality: "good" },
+  { firstName: "Chiamaka", lastName: "Eze", department: "Development (Dev) Team", office: "lagos", jobTitle: "Frontend Developer", punctuality: "average", workArrangement: "HYBRID", onSiteDays: [1, 3, 5] },
   { firstName: "Ibrahim", lastName: "Musa", department: "Engineering", office: "abuja", jobTitle: "DevOps Engineer", punctuality: "good" },
   { firstName: "Funmilayo", lastName: "Adeyemi", department: "Engineering", office: "lagos", jobTitle: "QA Engineer", punctuality: "poor" },
-  { firstName: "Emeka", lastName: "Nwosu", department: "Engineering", office: "lagos", jobTitle: "Mobile Engineer", punctuality: "average", workArrangement: "REMOTE" },
+  { firstName: "Emeka", lastName: "Nwosu", department: "Development (Dev) Team", office: "lagos", jobTitle: "Mobile Developer", punctuality: "average", workArrangement: "REMOTE" },
   { firstName: "Ngozi", lastName: "Obi", department: "Finance", office: "lagos", jobTitle: "Finance Lead", punctuality: "star" },
   { firstName: "Segun", lastName: "Afolabi", department: "Finance", office: "lagos", jobTitle: "Accountant", punctuality: "good", workStart: "08:00", workEnd: "16:00" },
   { firstName: "Halima", lastName: "Bello", department: "Finance", office: "abuja", jobTitle: "Accounts Officer", punctuality: "average" },
-  { firstName: "Kemi", lastName: "Ogunleye", department: "Human Resources", office: "lagos", jobTitle: "HR Manager", punctuality: "star" },
-  { firstName: "Yusuf", lastName: "Abdullahi", department: "Human Resources", office: "abuja", jobTitle: "HR Officer", punctuality: "good", workArrangement: "HYBRID", onSiteDays: [2, 4] },
+  { firstName: "Kemi", lastName: "Ogunleye", department: "HR", office: "lagos", jobTitle: "HR Manager", punctuality: "star" },
+  { firstName: "Yusuf", lastName: "Abdullahi", department: "HR", office: "abuja", jobTitle: "HR Officer", punctuality: "good", workArrangement: "HYBRID", onSiteDays: [2, 4] },
   { firstName: "Blessing", lastName: "Etim", department: "Operations", office: "lagos", jobTitle: "Operations Manager", punctuality: "good" },
-  { firstName: "Olumide", lastName: "Fashola", department: "Operations", office: "lagos", jobTitle: "Logistics Coordinator", punctuality: "poor", workStart: "07:30", workEnd: "15:30" },
-  { firstName: "Amina", lastName: "Garba", department: "Operations", office: "abuja", jobTitle: "Office Administrator", punctuality: "average" },
-  { firstName: "Chinedu", lastName: "Igwe", department: "Sales", office: "lagos", jobTitle: "Sales Lead", punctuality: "average" },
-  { firstName: "Folake", lastName: "Adebayo", department: "Sales", office: "lagos", jobTitle: "Account Executive", punctuality: "poor" },
-  { firstName: "Usman", lastName: "Danjuma", department: "Sales", office: "abuja", jobTitle: "Sales Representative", punctuality: "good" },
-  { firstName: "Grace", lastName: "Udoh", department: "Customer Support", office: "lagos", jobTitle: "Support Lead", punctuality: "star", workArrangement: "HYBRID", onSiteDays: [1, 2, 3] },
-  { firstName: "Daniel", lastName: "Okafor", department: "Customer Support", office: "lagos", jobTitle: "Support Agent", punctuality: "average" },
-  { firstName: "Zainab", lastName: "Lawal", department: "Customer Support", office: "lagos", jobTitle: "Support Agent", punctuality: "poor", employmentStatus: "SUSPENDED", lastSeenDaysAgo: 9 },
-  { firstName: "Peter", lastName: "Akpan", department: "Sales", office: "lagos", jobTitle: "Sales Representative", punctuality: "average", employmentStatus: "INACTIVE", lastSeenDaysAgo: 15 },
-  { firstName: "Bisi", lastName: "Oladipo", department: "Operations", office: "lagos", jobTitle: "Driver", punctuality: "good", employmentStatus: "EXITED", lastSeenDaysAgo: 22 },
+  { firstName: "Olumide", lastName: "Fashola", department: "Logistics", office: "lagos", jobTitle: "Logistics Coordinator", punctuality: "poor", workStart: "07:30", workEnd: "15:30" },
+  { firstName: "Amina", lastName: "Garba", department: "Administrative Assistance", office: "abuja", jobTitle: "Office Administrator", punctuality: "average" },
+  { firstName: "Chinedu", lastName: "Igwe", department: "Creative Department", office: "lagos", jobTitle: "Creative Lead", punctuality: "average" },
+  { firstName: "Folake", lastName: "Adebayo", department: "Creative Department", office: "lagos", jobTitle: "Graphic Designer", punctuality: "poor" },
+  { firstName: "Usman", lastName: "Danjuma", department: "Data Team", office: "abuja", jobTitle: "Data Analyst", punctuality: "good" },
+  { firstName: "Grace", lastName: "Udoh", department: "Administrative Assistance", office: "lagos", jobTitle: "Executive Assistant", punctuality: "star", workArrangement: "HYBRID", onSiteDays: [1, 2, 3] },
+  { firstName: "Daniel", lastName: "Okafor", department: "Data Team", office: "lagos", jobTitle: "Data Engineer", punctuality: "average" },
+  { firstName: "Zainab", lastName: "Lawal", department: "Creative Department", office: "lagos", jobTitle: "Content Writer", punctuality: "poor", employmentStatus: "SUSPENDED", lastSeenDaysAgo: 9 },
+  { firstName: "Peter", lastName: "Akpan", department: "Data Team", office: "lagos", jobTitle: "Data Analyst", punctuality: "average", employmentStatus: "INACTIVE", lastSeenDaysAgo: 15 },
+  { firstName: "Bisi", lastName: "Oladipo", department: "Logistics", office: "lagos", jobTitle: "Driver", punctuality: "good", employmentStatus: "EXITED", lastSeenDaysAgo: 22 },
   { firstName: "Sola", lastName: "Martins", department: "Finance", office: "lagos", jobTitle: "Intern", punctuality: "average", isDeleted: true, lastSeenDaysAgo: 18 },
 ];
 
@@ -123,25 +134,48 @@ const NO_TASKS_REASONS = [
 ];
 
 const DEMO_TASKS: Record<string, string[]> = {
-  Engineering: [
+  "Creative Department": [
+    "Designed social media graphics for the product launch",
+    "Edited the client testimonial video",
+    "Drafted copy for the October newsletter",
+    "Updated the brand guidelines deck",
+    "Photographed the new office space for the website",
+    "Storyboarded the explainer animation",
+  ],
+  "Development (Dev) Team": [
     "Fixed the attendance export timeout on large date ranges",
     "Code review for the payroll integration pull request",
     "Wrote unit tests for the leave balance calculator",
-    "Investigated slow dashboard queries and added an index",
+    "Built the new client onboarding screens",
     "Sprint planning and ticket grooming",
+    "Fixed the mobile login regression",
+  ],
+  "Data Team": [
+    "Cleaned and merged the Q3 customer dataset",
+    "Built the weekly attendance trends dashboard",
+    "Wrote SQL for the management KPI report",
+    "Investigated a gap in last month's sales data",
+    "Automated the daily data backup check",
+    "Presented churn analysis to management",
+  ],
+  Engineering: [
+    "Investigated slow dashboard queries and added an index",
     "Upgraded staging server dependencies",
-    "Paired with QA on the mobile login regression",
+    "Configured monitoring alerts for the production servers",
+    "Reviewed the network setup for the Abuja branch",
+    "Ran the monthly security patching",
+    "Documented the deployment runbook",
   ],
-  Finance: [
-    "Reconciled September vendor invoices",
-    "Prepared the weekly cash flow summary",
-    "Processed staff expense claims",
-    "Followed up on overdue client payments",
-    "Drafted the Q4 budget variance report",
-    "Filed monthly VAT returns",
+  "Administrative Assistance": [
+    "Managed the MD's calendar and meeting requests",
+    "Prepared minutes for the weekly management meeting",
+    "Ordered office supplies",
+    "Arranged travel for the Abuja site visit",
+    "Filed and scanned contracts",
+    "Welcomed and directed visitors",
   ],
-  "Human Resources": [
-    "Screened applicants for the support agent role",
+  HR: [
+    "Screened applicants for the data analyst role",
     "Onboarded two new staff members",
     "Updated the leave policy document",
     "Scheduled quarterly performance reviews",
@@ -151,26 +185,26 @@ const DEMO_TASKS: Record<string, string[]> = {
   Operations: [
     "Coordinated diesel delivery for the generator",
     "Audited office inventory and supplies",
-    "Arranged vehicle servicing for the fleet",
     "Followed up with the facility manager on AC repairs",
-    "Planned delivery routes for the week",
     "Renewed the internet service contract",
+    "Reviewed vendor contracts due for renewal",
+    "Updated the office maintenance schedule",
   ],
-  Sales: [
-    "Called 15 leads from the trade fair list",
-    "Prepared a proposal for the Ikeja retail client",
-    "Client demo with a prospective logistics customer",
-    "Updated the CRM pipeline",
-    "Negotiated renewal terms with an existing client",
-    "Drafted the monthly sales report",
+  Finance: [
+    "Reconciled September vendor invoices",
+    "Prepared the weekly cash flow summary",
+    "Processed staff expense claims",
+    "Followed up on overdue client payments",
+    "Drafted the Q4 budget variance report",
+    "Filed monthly VAT returns",
   ],
-  "Customer Support": [
-    "Resolved 23 support tickets",
-    "Escalated a billing dispute to Finance",
-    "Updated FAQ articles on password resets",
-    "Called back customers from the weekend queue",
-    "Trained a new agent on the ticketing system",
-    "Reviewed customer satisfaction survey results",
+  Logistics: [
+    "Planned delivery routes for the week",
+    "Arranged vehicle servicing for the fleet",
+    "Delivered documents to the Ikeja client office",
+    "Tracked the delayed equipment shipment",
+    "Updated the vehicle mileage log",
+    "Coordinated staff bus pickups",
   ],
 };
 
@@ -206,7 +240,11 @@ async function resetDatabase() {
   await prisma.employeeDeletionRequest.deleteMany();
   await prisma.attendanceIdHistory.deleteMany();
   await prisma.employee.deleteMany();
-  await prisma.department.deleteMany();
+  // Departments are kept (they match the real ones). Only drop the ones earlier
+  // versions of this seed invented, now that no employee uses them.
+  await prisma.department.deleteMany({
+    where: { name: { in: ["Sales", "Customer Support", "Human Resources"] }, employees: { none: {} } },
+  });
   await prisma.notification.deleteMany();
   await prisma.holiday.deleteMany();
   await prisma.auditLog.deleteMany();
@@ -250,14 +288,15 @@ async function main() {
   // --- Organization -----------------------------------------------------------
   const departments = new Map<string, string>();
   for (const name of DEPARTMENTS) {
-    departments.set(name, (await prisma.department.create({ data: { name } })).id);
+    departments.set(name, (await prisma.department.upsert({ where: { name }, create: { name }, update: {} })).id);
   }
 
   const lagos = await prisma.office.create({
-    data: { name: "Lagos HQ", address: "12 Admiralty Way, Lekki Phase 1, Lagos", timezone: TZ },
+    // Approximate street locations, for QR + location attendance (150 m radius by default).
+    data: { name: "Lagos HQ", address: "12 Admiralty Way, Lekki Phase 1, Lagos", timezone: TZ, latitude: 6.4474, longitude: 3.4728 },
   });
   const abuja = await prisma.office.create({
-    data: { name: "Abuja Branch", address: "Plot 45 Aminu Kano Crescent, Wuse 2, Abuja", timezone: TZ },
+    data: { name: "Abuja Branch", address: "Plot 45 Aminu Kano Crescent, Wuse 2, Abuja", timezone: TZ, latitude: 9.0813, longitude: 7.4713 },
   });
   const offices = { lagos: lagos.id, abuja: abuja.id };
 
@@ -269,7 +308,11 @@ async function main() {
     data: {
       officeId: lagos.id,
       name: "Lagos HQ Starlink (local dev)",
-      currentPublicIp: "::1",
+      // Browsers reach `npm run dev` as ::1 (IPv6) or 127.0.0.1 (IPv4) — both are covered.
+      currentPublicIp: "127.0.0.1",
+      ipv4VerifiedAt: now,
+      currentPublicIpv6: "::1",
+      ipv6VerifiedAt: now,
       cidr: "127.0.0.0/8",
       status: "VERIFIED",
       lastVerifiedAt: now,
@@ -281,6 +324,7 @@ async function main() {
       officeId: abuja.id,
       name: "Abuja Starlink",
       currentPublicIp: "102.88.14.201",
+      ipv4VerifiedAt: new Date(now.getTime() - 3 * 60 * 60_000),
       status: "STALE",
       lastVerifiedAt: new Date(now.getTime() - 3 * 60 * 60_000),
       failMode: "FAIL_CLOSED",

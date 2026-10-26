@@ -8,7 +8,9 @@ import {
   setNetworkEnabledAction,
   setNetworkFailModeAction,
   authorizeCurrentNetworkAction,
+  type AuthorizeNetworkResult,
 } from "@/lib/actions/offices";
+import { ipv6NetworkLabel } from "@/lib/network/matchIp";
 import { toast, toastError } from "@/hooks/use-toast";
 import type { OfficeNetwork } from "@prisma/client";
 
@@ -109,7 +111,7 @@ export function NetworkRow({ network }: { network: OfficeNetwork }) {
   const [pending, startTransition] = useTransition();
   const [revealedToken, setRevealedToken] = useState<string | null>(null);
   const [confirmingManual, setConfirmingManual] = useState(false);
-  const [manualResult, setManualResult] = useState<{ ip: string } | { error: string } | null>(null);
+  const [manualResult, setManualResult] = useState<AuthorizeNetworkResult | { error: string } | null>(null);
 
   const staleOrUnverified = network.status !== "VERIFIED";
 
@@ -119,8 +121,17 @@ export function NetworkRow({ network }: { network: OfficeNetwork }) {
         <div>
           <p className="font-medium">{network.name}</p>
           <p className="text-xs text-muted-foreground">
-            IP: {network.currentPublicIp ?? "—"} {network.cidr ? `· CIDR: ${network.cidr}` : ""}
+            IPv4: {network.currentPublicIp ?? "—"} · IPv6:{" "}
+            {network.currentPublicIpv6 ? ipv6NetworkLabel(network.currentPublicIpv6) : "—"}
+            {network.cidr ? ` · CIDR: ${network.cidr}` : ""}
           </p>
+          {network.status !== "DISABLED" && !!network.currentPublicIp !== !!network.currentPublicIpv6 ? (
+            <p className="text-xs text-amber-700">
+              Only IPv{network.currentPublicIp ? "4" : "6"} captured — if this Wi-Fi also has IPv
+              {network.currentPublicIp ? "6" : "4"}, employees whose browser uses it will be refused until it&apos;s
+              captured too.
+            </p>
+          ) : null}
         </div>
         <span
           className={`rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -156,7 +167,16 @@ export function NetworkRow({ network }: { network: OfficeNetwork }) {
           </div>
         ) : (
           <div className="mt-2 rounded-md border border-green-300 bg-green-50 p-2 text-xs text-green-800">
-            Authorized — this network&apos;s IP is now <span className="font-mono">{manualResult.ip}</span>.
+            Authorized — captured this network&apos;s IPv{manualResult.family} address{" "}
+            <span className="font-mono">{manualResult.ip}</span>.
+            {!manualResult.hasIpv4 || !manualResult.hasIpv6 ? (
+              <p className="mt-1">
+                Phones and browsers can connect over either IPv4 or IPv6, and only IPv
+                {manualResult.hasIpv4 ? "4" : "6"} is captured so far — if this Wi-Fi also has IPv
+                {manualResult.hasIpv4 ? "6" : "4"}, anyone whose browser uses it will be refused. Click Authorize again from a different browser or
+                device on this Wi-Fi to capture it, or run the Network Agent, which captures both automatically.
+              </p>
+            ) : null}
             <Button size="sm" variant="outline" className="ml-2" onClick={() => setManualResult(null)}>
               Done
             </Button>

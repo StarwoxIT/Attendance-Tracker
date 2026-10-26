@@ -7,6 +7,23 @@ export function getAttendanceDateKey(instant: Date, timezone: string): Date {
   return new Date(`${ymd}T00:00:00.000Z`);
 }
 
+/** `instant` as an `<input type="datetime-local">` value ("2026-10-26T09:00"), in the office timezone. */
+export function toDateTimeLocalValue(instant: Date | null, timezone: string): string {
+  return instant ? formatInTimeZone(instant, timezone, "yyyy-MM-dd'T'HH:mm") : "";
+}
+
+/**it
+ * Parses an `<input type="datetime-local">` value as wall-clock time in the office
+ * timezone. The value carries no offset, so `new Date(value)` would read it in
+ * whatever zone the parsing machine happens to be in — UTC on the server, which
+ * stored an admin's 09:00 (Lagos) as 10:00. Returns null if the value is malformed.
+ */
+export function fromDateTimeLocalValue(value: string, timezone: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(value)) return null;
+  const instant = fromZonedTime(value, timezone);
+  return Number.isNaN(instant.getTime()) ? null : instant;
+}
+
 export function isWeekend(instant: Date, timezone: string): boolean {
   const dow = Number(formatInTimeZone(instant, timezone, "i")); // 1=Mon..7=Sun (ISO)
   return dow === 6 || dow === 7;

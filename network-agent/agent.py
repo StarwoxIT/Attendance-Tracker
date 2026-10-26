@@ -25,12 +25,15 @@ import hmac
 import json
 import logging
 import os
+import socket
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 import requests
+import urllib3.util.connection as urllib3_connection
 
 try:
     from dotenv import load_dotenv
@@ -42,11 +45,19 @@ except ImportError:
 STATE_FILE = Path(__file__).parent / "agent_state.json"
 LOG_FILE = Path(__file__).parent / "agent.log"
 
+# Each of these answers over IPv4 and IPv6 alike, reporting the address the
+# request arrived from — so under force_ip_family() they report that family's IP.
 IP_LOOKUP_SERVICES = [
-    "https://api.ipify.org",
-    "https://ifconfig.me/ip",
+    "https://api64.ipify.org",
     "https://icanhazip.com",
+    "https://ifconfig.co/ip",
 ]
+
+# Browsers on the office Wi-Fi reach the server over IPv4 or IPv6 (whichever
+# connects first, per browser and per page load), and the server only learns an
+# office address from a heartbeat that arrives over that same family. So every
+# cycle heartbeats once per family; one the office doesn't have is just skipped.
+IP_FAMILIES = {"IPv4": socket.AF_INET, "IPv6": socket.AF_INET6}
 
 logging.basicConfig(
     level=logging.INFO,
@@ -83,6 +94,17 @@ def save_state(state: dict) -> None:
         os.chmod(STATE_FILE, 0o600)
     except OSError:
         pass  # best-effort on platforms without POSIX permissions (e.g. some Windows setups)
+
+
+@contextmanager
+def force_ip_family(family: int) -> Iterator[None]:
+    """Makes `requests` (via urllib3) connect only over the given address family."""
+    original = urllib3_connection.allowed_gai_family
+    urllib3_connection.allowed_gai_family = lambda: family
+    try:
+        yield
+    finally:
+        urllib3_connection.allowed_gai_family = original
 
 
 def detect_public_ip(timeout: float = 8.0) -> str:
@@ -171,25 +193,40 @@ def cmd_register(args: argparse.Namespace) -> None:
 def cmd_test(_args: argparse.Namespace) -> None:
     print(f"Server:           {server_url()}")
     try:
-        ip = detect_public_ip()
-        print(f"Detected Public IP: {ip}")
-    except Exception as exc:  # noqa: BLE001
-        print(f"IP detection FAILED: {exc}")
-        sys.exit(1)
-
-    try:
         state = ensure_registered()
         print("Authentication:    Valid (registered)")
     except ConfigError as exc:
         print(f"Authentication:    Not registered — {exc}")
         sys.exit(1)
 
-    try:
-        send_heartbeat(state["officeId"], state["agentId"], state["agentSigningSecret"], ip)
-        print("Heartbeat:          Successful")
-    except Exception as exc:  # noqa: BLE001
-        print(f"Heartbeat:          FAILED — {exc}")
+    succeeded = 0
+    for name, family in IP_FAMILIES.items():
+        try:
+            with force_ip_family(family):
+                ip = detect_public_ip()
+                print(f"{name} public IP:     {ip}")
+                send_heartbeat(state["officeId"], state["agentId"], state["agentSigningSecret"], ip)
+            print(f"{name} heartbeat:     Successful")
+            succeeded += 1
+        except Exception as exc:  # noqa: BLE001
+            print(f"{name}:               not available — {exc}")
+    if succeeded == 0:
+        print("Heartbeat:          FAILED over both IPv4 and IPv6")
         sys.exit(1)
+
+
+def heartbeat_all_families(state: dict) -> int:
+    """One heartbeat per IP family the office has. Returns how many succeeded."""
+    succeeded = 0
+    for name, family in IP_FAMILIES.items():
+        try:
+            with force_ip_family(family):
+                ip = detect_public_ip()
+                send_heartbeat(state["officeId"], state["agentId"], state["agentSigningSecret"], ip)
+            succeeded += 1
+        except Exception as exc:  # noqa: BLE001 — e.g. the office simply has no IPv6
+            log.info("%s heartbeat skipped: %s", name, exc)
+    return succeeded
 
 
 def cmd_run(_args: argparse.Namespace) -> None:
@@ -203,8 +240,8 @@ def cmd_run(_args: argparse.Namespace) -> None:
     while True:
         try:
             state = ensure_registered()
-            ip = detect_public_ip()
-            send_heartbeat(state["officeId"], state["agentId"], state["agentSigningSecret"], ip)
+            if heartbeat_all_families(state) == 0:
+                raise RuntimeError("No heartbeat succeeded over IPv4 or IPv6")
             backoff_seconds = 10  # reset backoff after a success
             time.sleep(interval_seconds)
         except ConfigError as exc:

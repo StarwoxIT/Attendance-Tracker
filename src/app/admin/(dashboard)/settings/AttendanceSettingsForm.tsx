@@ -43,9 +43,14 @@ export function AttendanceSettingsForm({ settings }: { settings: AttendanceSetti
         <label className="mb-1 block text-sm font-medium">Attendance mode</label>
         <select name="attendanceMode" defaultValue={settings.attendanceMode} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
           <option value="NETWORK_ONLY">Network only</option>
-          <option value="QR_AND_NETWORK">QR + Network (recommended)</option>
-          <option value="QR_ONLY">QR only</option>
+          <option value="NETWORK_WITH_QR_BACKUP">Network, with QR + location backup (recommended)</option>
+          <option value="QR_AND_NETWORK">QR + Network</option>
+          <option value="QR_ONLY">QR + location only</option>
         </select>
+        <p className="mt-1 text-xs text-muted-foreground">
+          The backup lets staff scan the printed QR code on mobile data when the office network is down — it opens
+          automatically when the Network Agent stops checking in, or from Offices &amp; Network.
+        </p>
       </div>
       <div>
         <label className="mb-1 block text-sm font-medium">QR session length (minutes)</label>

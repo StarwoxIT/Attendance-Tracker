@@ -29,6 +29,13 @@ export function generateQrToken(): GeneratedQrToken {
   };
 }
 
+/** validUntil of a printed "no expiry" code — valid until deactivated or replaced. */
+export const PERMANENT_QR_VALID_UNTIL = new Date("9999-12-31T23:59:59.999Z");
+
+export function isPermanentQr(qr: { validUntil: Date }): boolean {
+  return qr.validUntil.getTime() >= PERMANENT_QR_VALID_UNTIL.getTime();
+}
+
 export function buildQrUrl(appUrl: string, rawToken: string): string {
   return `${appUrl.replace(/\/$/, "")}/register/qr/${rawToken}`;
 }

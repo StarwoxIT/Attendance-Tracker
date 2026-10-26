@@ -63,3 +63,6 @@ network-agent/*.log
 *.pgdump
 production_data*.json
 export-data*.json
+
+# local file storage (STORAGE_DRIVER=local)
+/storage

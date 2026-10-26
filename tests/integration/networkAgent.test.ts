@@ -109,6 +109,31 @@ describeIfDb("Network agent auth — integration", () => {
     expect(network?.currentPublicIp).toBe("102.89.0.1");
     expect(network?.currentPublicIp).not.toBe("9.9.9.9");
   });
+
+  it("learns IPv4 and IPv6 from separate heartbeats without one overwriting the other", async () => {
+    const reg = await registerNetworkAgent({ agentId, registrationToken, sourceIp: "1.2.3.4" });
+    if (!reg.ok) throw new Error("registration failed");
+
+    for (const sourceIp of ["102.89.0.1", "2a0d:3344:1a2b:5c00::7"]) {
+      const timestamp = String(Math.floor(Date.now() / 1000));
+      const payload = JSON.stringify({ officeId, agentId, reportedIp: sourceIp });
+      const result = await processHeartbeat({
+        officeId,
+        agentId,
+        reportedIp: sourceIp,
+        timestamp,
+        signature: sign(reg.agentSigningSecret, timestamp, payload),
+        sourceIp,
+      });
+      expect(result.ok).toBe(true);
+    }
+
+    const network = await prisma.officeNetwork.findUnique({ where: { agentId } });
+    expect(network?.currentPublicIp).toBe("102.89.0.1");
+    expect(network?.currentPublicIpv6).toBe("2a0d:3344:1a2b:5c00::7");
+    expect(network?.ipv4VerifiedAt).not.toBeNull();
+    expect(network?.ipv6VerifiedAt).not.toBeNull();
+  });
 });
 
 describeIfDb("sha256Hex sanity", () => {

@@ -15,12 +15,11 @@ export default async function RegisterPage({
   const { error } = await searchParams;
   const [company, settings] = await Promise.all([getCompanySettings(), getAttendanceSettings()]);
 
-  const requiresQr = settings.attendanceMode === "QR_AND_NETWORK" || settings.attendanceMode === "QR_ONLY";
-  // Modes where a scan is backed by the phone's location rather than the office network.
-  const qrUsesLocation = settings.attendanceMode === "QR_ONLY" || settings.attendanceMode === "NETWORK_WITH_QR_BACKUP";
+  // QR + location mode: a scan of the office QR, backed by the phone's location.
+  const requiresQr = settings.attendanceMode === "QR_ONLY";
 
   let hasValidQrSession = false;
-  if (requiresQr || qrUsesLocation) {
+  if (requiresQr) {
     const store = await cookies();
     const token = store.get(QR_SESSION_COOKIE)?.value;
     if (token) {
@@ -58,7 +57,7 @@ export default async function RegisterPage({
       resetSeconds={settings.kioskResetSeconds}
       initialError={error ?? null}
       hasQrSession={hasValidQrSession}
-      checkLocation={hasValidQrSession && qrUsesLocation}
+      checkLocation={hasValidQrSession}
     />
   );
 }

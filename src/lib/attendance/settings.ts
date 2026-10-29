@@ -8,7 +8,7 @@ const DEFAULTS: Omit<AttendanceSettings, "id" | "updatedAt"> = {
   workStart: "09:00",
   gracePeriodMinutes: 15,
   workEnd: "17:00",
-  attendanceMode: "QR_AND_NETWORK",
+  attendanceMode: "NETWORK_ONLY",
   weekendIsOvertime: true,
   holidayIsOvertime: true,
   qrSessionMinutes: 10,

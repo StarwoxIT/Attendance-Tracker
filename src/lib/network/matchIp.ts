@@ -141,6 +141,18 @@ export interface MatchableNetwork {
   cidr: string | null;
 }
 
+/**
+ * Which address families the network can match — from its learned addresses or
+ * its CIDR (e.g. a 127.0.0.0/8 CIDR covers IPv4 even with no IPv4 address learned).
+ */
+export function coveredIpFamilies(network: MatchableNetwork): { ipv4: boolean; ipv6: boolean } {
+  const cidrFamily = network.cidr ? ipFamily(network.cidr.trim().split("/")[0]) : null;
+  return {
+    ipv4: !!network.currentPublicIp || cidrFamily === 4,
+    ipv6: !!network.currentPublicIpv6 || cidrFamily === 6,
+  };
+}
+
 /** Which of the network's identities `sourceIp` matched, if any. */
 export type NetworkMatch = "IPV4" | "IPV6" | "CIDR" | null;
 

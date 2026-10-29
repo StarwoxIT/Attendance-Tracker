@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  coveredIpFamilies,
   ipFamily,
   ipMatches,
   ipv6NetworkLabel,
@@ -108,5 +109,21 @@ describe("IPv6 office networks", () => {
 
   it("labels the office /64 for display", () => {
     expect(ipv6NetworkLabel(officeV6)).toBe("2a0d:3344:1a2b:5c00::/64");
+  });
+});
+
+describe("coveredIpFamilies", () => {
+  it("counts a CIDR toward the family it's written in", () => {
+    expect(coveredIpFamilies({ currentPublicIp: null, currentPublicIpv6: "::1", cidr: "127.0.0.0/8" })).toEqual({
+      ipv4: true,
+      ipv6: true,
+    });
+    expect(coveredIpFamilies({ currentPublicIp: "102.88.14.201", currentPublicIpv6: null, cidr: null })).toEqual({
+      ipv4: true,
+      ipv6: false,
+    });
+    expect(
+      coveredIpFamilies({ currentPublicIp: "102.88.14.201", currentPublicIpv6: null, cidr: "2a0d:3344:1a2b:5c00::/64" })
+    ).toEqual({ ipv4: true, ipv6: true });
   });
 });

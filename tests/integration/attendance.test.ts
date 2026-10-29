@@ -548,7 +548,7 @@ describeIfDb("recordAttendance — integration", () => {
     const DOWN_THE_ROAD = { latitude: 6.4381, longitude: 3.4219, accuracy: 15 }; // ~1.1 km away
     const MOBILE_IP = "41.58.0.99"; // mobile data — nowhere near any office network
 
-    async function setMode(attendanceMode: "QR_ONLY" | "NETWORK_WITH_QR_BACKUP" | "NETWORK_ONLY") {
+    async function setMode(attendanceMode: "QR_ONLY" | "NETWORK_ONLY") {
       await updateAttendanceSettings({ timezone: TZ, workStart: "09:00", gracePeriodMinutes: 15, workEnd: "17:00", attendanceMode });
     }
 
@@ -574,7 +574,7 @@ describeIfDb("recordAttendance — integration", () => {
     afterAll(async () => {
       await prisma.office.update({
         where: { id: officeId },
-        data: { latitude: null, longitude: null, qrBackupUntil: null },
+        data: { latitude: null, longitude: null },
       });
       await setMode("NETWORK_ONLY");
     });
@@ -659,123 +659,46 @@ describeIfDb("recordAttendance — integration", () => {
       });
     });
 
-    describeIfDb("NETWORK_WITH_QR_BACKUP mode", () => {
-      const OFFICE_IP = "102.89.0.1";
+    it("records the clock-out's distance too", async () => {
+      await prisma.officeNetwork.deleteMany({ where: { officeId } });
+      await setMode("QR_ONLY");
+      const { attendanceId } = await makeEmployee();
+      const input = { attendanceIdRaw: attendanceId, sourceIp: MOBILE_IP, userAgent: "vitest" };
 
-      /** The office's agent-registered network, last heard from `minutesAgo` minutes ago. */
-      async function agentNetwork(minutesAgo: number) {
-        const seen = new Date(Date.now() - minutesAgo * 60_000);
-        await prisma.officeNetwork.deleteMany({ where: { officeId } });
-        await prisma.officeNetwork.create({
-          data: {
-            officeId,
-            name: "Agent network",
-            currentPublicIp: OFFICE_IP,
-            ipv4VerifiedAt: seen,
-            lastVerifiedAt: seen,
-            agentSigningSecret: "test-signing-secret",
-            status: "VERIFIED",
-            failMode: "FAIL_CLOSED",
-          },
-        });
+      const clockIn = await recordAttendance({ ...input, qrSessionToken: await scanQr(), location: AT_DESK });
+      expect(clockIn.ok).toBe(true);
+      if (!clockIn.ok) return;
+      // Past the retry window, so the next request is a clock-out.
+      await prisma.attendanceRecord.update({
+        where: { id: clockIn.record.id },
+        data: { clockIn: new Date(Date.now() - 60 * 60_000) },
+      });
+
+      const clockOut = await recordAttendance({
+        ...input,
+        qrSessionToken: await scanQr(),
+        location: { ...OFFICE_LOCATION, accuracy: 12 },
+        tasks: TASKS,
+        earlyClockOutReason: "Leaving early",
+      });
+      expect(clockOut.ok && clockOut.action).toBe("CLOCK_OUT");
+      if (clockOut.ok) {
+        expect(clockOut.record.clockOutDistanceMeters).toBe(0);
+        expect(clockOut.record.clockOutLocationAccuracyMeters).toBe(12);
       }
+    });
 
-      beforeAll(async () => {
-        await setMode("NETWORK_WITH_QR_BACKUP");
+    it("ignores a QR scan in Network mode — mobile data stays locked out", async () => {
+      await setMode("NETWORK_ONLY");
+      const { attendanceId } = await makeEmployee();
+      const result = await recordAttendance({
+        attendanceIdRaw: attendanceId,
+        sourceIp: MOBILE_IP,
+        userAgent: "vitest",
+        qrSessionToken: await scanQr(),
+        location: AT_DESK,
       });
-
-      beforeEach(async () => {
-        await prisma.office.update({ where: { id: officeId }, data: { qrBackupUntil: null } });
-      });
-
-      afterAll(async () => {
-        await prisma.officeNetwork.deleteMany({ where: { officeId } });
-      });
-
-      it("works exactly as before on the office network — no scan or location needed", async () => {
-        await agentNetwork(2);
-        const { attendanceId } = await makeEmployee();
-        const result = await recordAttendance({ attendanceIdRaw: attendanceId, sourceIp: OFFICE_IP, userAgent: "vitest" });
-        expect(result.ok).toBe(true);
-        if (result.ok) {
-          expect(result.record.verificationMethod).toBe("NETWORK");
-          expect(result.record.clockInDistanceMeters).toBeNull();
-        }
-      });
-
-      it("keeps the QR backup closed while the office network is online", async () => {
-        await agentNetwork(2);
-        const { attendanceId } = await makeEmployee();
-        const input = { attendanceIdRaw: attendanceId, sourceIp: MOBILE_IP, userAgent: "vitest" };
-
-        const noScan = await recordAttendance(input);
-        expect(!noScan.ok && noScan.reason).toBe("NETWORK_DENIED");
-
-        const scanned = await recordAttendance({ ...input, qrSessionToken: await scanQr(), location: AT_DESK });
-        expect(!scanned.ok && scanned.reason).toBe("QR_BACKUP_INACTIVE");
-      });
-
-      it("opens the backup by itself when the Network Agent goes quiet (power cut)", async () => {
-        await agentNetwork(120);
-        const { attendanceId } = await makeEmployee();
-        const input = { attendanceIdRaw: attendanceId, sourceIp: MOBILE_IP, userAgent: "vitest" };
-
-        const noScan = await recordAttendance(input);
-        expect(!noScan.ok && noScan.reason).toBe("USE_QR_BACKUP");
-
-        const qrSessionToken = await scanQr();
-        const away = await recordAttendance({ ...input, qrSessionToken, location: DOWN_THE_ROAD });
-        expect(!away.ok && away.reason).toBe("LOCATION_OUT_OF_RANGE");
-
-        const atDesk = await recordAttendance({ ...input, qrSessionToken, location: AT_DESK });
-        expect(atDesk.ok).toBe(true);
-        if (atDesk.ok) expect(atDesk.record.verificationMethod).toBe("QR_LOCATION");
-      });
-
-      it("opens the backup straight away when an admin switches it on", async () => {
-        await agentNetwork(2);
-        const { endOfOfficeDay } = await import("@/lib/attendance/qrBackup");
-        await prisma.office.update({ where: { id: officeId }, data: { qrBackupUntil: endOfOfficeDay(new Date(), TZ) } });
-
-        const { attendanceId } = await makeEmployee();
-        const result = await recordAttendance({
-          attendanceIdRaw: attendanceId,
-          sourceIp: MOBILE_IP,
-          userAgent: "vitest",
-          qrSessionToken: await scanQr(),
-          location: AT_DESK,
-        });
-        expect(result.ok).toBe(true);
-        if (result.ok) expect(result.record.verificationMethod).toBe("QR_LOCATION");
-      });
-
-      it("records the clock-out's distance too", async () => {
-        await agentNetwork(120);
-        const { attendanceId } = await makeEmployee();
-        const input = { attendanceIdRaw: attendanceId, sourceIp: MOBILE_IP, userAgent: "vitest" };
-
-        const clockIn = await recordAttendance({ ...input, qrSessionToken: await scanQr(), location: AT_DESK });
-        expect(clockIn.ok).toBe(true);
-        if (!clockIn.ok) return;
-        // Past the retry window, so the next request is a clock-out.
-        await prisma.attendanceRecord.update({
-          where: { id: clockIn.record.id },
-          data: { clockIn: new Date(Date.now() - 60 * 60_000) },
-        });
-
-        const clockOut = await recordAttendance({
-          ...input,
-          qrSessionToken: await scanQr(),
-          location: { ...OFFICE_LOCATION, accuracy: 12 },
-          tasks: TASKS,
-          earlyClockOutReason: "Leaving early",
-        });
-        expect(clockOut.ok && clockOut.action).toBe("CLOCK_OUT");
-        if (clockOut.ok) {
-          expect(clockOut.record.clockOutDistanceMeters).toBe(0);
-          expect(clockOut.record.clockOutLocationAccuracyMeters).toBe(12);
-        }
-      });
+      expect(!result.ok && result.reason).toBe("NETWORK_DENIED");
     });
   });
 });

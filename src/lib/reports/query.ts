@@ -207,3 +207,64 @@ export function summarizeTaskReportRows(rows: TaskReportRow[]): string[] {
     `No tasks to report: ${rows.filter((r) => r.tasks.startsWith("No tasks to report:")).length}`,
   ];
 }
+
+export interface EmployeeAttendanceFilters {
+  employeeId: string;
+  from?: string;
+  to?: string;
+  /** Tasks are Admin/Super Admin only — without this the Tasks/Status columns are left out. */
+  includeTasks: boolean;
+}
+
+/** One row per day for one employee. Tasks and their statuses sit in two cells, one
+ * numbered line each, so line N of Status belongs to task N. */
+export type EmployeeAttendanceRow = Record<string, string>;
+
+export async function fetchEmployeeAttendanceRows(
+  filters: EmployeeAttendanceFilters,
+  timezone = "Africa/Lagos"
+): Promise<EmployeeAttendanceRow[]> {
+  const where: Prisma.AttendanceRecordWhereInput = { employeeId: filters.employeeId };
+  if (filters.from || filters.to) {
+    where.attendanceDate = {};
+    if (filters.from) where.attendanceDate.gte = new Date(`${filters.from}T00:00:00Z`);
+    if (filters.to) where.attendanceDate.lte = new Date(`${filters.to}T00:00:00Z`);
+  }
+
+  const records = await prisma.attendanceRecord.findMany({
+    where,
+    include: {
+      employee: { include: { department: true } },
+      taskReport: { include: { tasks: { orderBy: { position: "asc" } } } },
+    },
+    orderBy: { attendanceDate: "desc" },
+    take: 5000,
+  });
+
+  const time = (instant: Date | null, missing: string) =>
+    instant ? formatInTimeZone(instant, timezone, "d MMM yyyy, h:mm a") : missing;
+
+  return records.map((r) => {
+    const row: EmployeeAttendanceRow = {
+      "Employee Name": `${r.employee.firstName} ${r.employee.lastName}`,
+      Department: r.employee.department?.name ?? "",
+      "Clock In": time(r.clockIn, ""),
+      "Clock Out": time(r.clockOut, r.clockIn ? "Not clocked out" : ""),
+    };
+    if (!filters.includeTasks) return row;
+
+    const report = r.taskReport;
+    if (report?.noTasksReason != null) {
+      row.Tasks = `No tasks to report: ${report.noTasksReason}`;
+      row.Status = "";
+    } else if (report) {
+      row.Tasks = report.tasks.map((t, i) => `${i + 1}. ${t.description}`).join("\n");
+      row.Status = report.tasks.map((t, i) => `${i + 1}. ${TASK_STATUS_LABELS[t.status]}`).join("\n");
+    } else {
+      // The report is filled in at clock-out; older clock-outs (or admin-added ones) have none.
+      row.Tasks = r.clockOut ? "No report submitted" : "";
+      row.Status = "";
+    }
+    return row;
+  });
+}

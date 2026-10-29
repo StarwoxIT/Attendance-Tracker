@@ -19,7 +19,7 @@ interface AttendanceRegisterProps {
   resetSeconds: number;
   initialError?: string | null;
   hasQrSession: boolean;
-  /** The scan has to be backed by the phone's location (QR only, or the QR backup). */
+  /** QR + location mode: the scan has to be backed by the phone's location. */
   checkLocation: boolean;
 }
 
@@ -80,6 +80,9 @@ const LOCATION_ERRORS = {
   unavailable: "Your phone couldn't work out where you are.\nMake sure Location/GPS is turned on, then try again.",
   timeout: "Finding your location took too long.\nMake sure Location/GPS is on, move near a window, and try again.",
   unsupported: "This browser can't share your location.\nPlease open the QR link in Chrome or Safari and try again.",
+  // Browsers only hand out location on https pages — no setting on the phone fixes this.
+  insecure:
+    "Your location can't be checked because this attendance page isn't on a secure (https) connection.\nPlease let your admin know.",
 };
 
 interface LocationReading {
@@ -90,6 +93,9 @@ interface LocationReading {
 
 /** The phone's position, or why we couldn't get it. The server makes the actual decision. */
 function readLocation(): Promise<{ reading: LocationReading } | { error: string }> {
+  if (typeof window !== "undefined" && !window.isSecureContext) {
+    return Promise.resolve({ error: LOCATION_ERRORS.insecure });
+  }
   if (typeof navigator === "undefined" || !navigator.geolocation) {
     return Promise.resolve({ error: LOCATION_ERRORS.unsupported });
   }
@@ -188,9 +194,8 @@ export function AttendanceRegister({
           location = found.reading;
           lastLocation.current = { reading: found.reading, at: Date.now() };
         } else {
-          // Still sent: in the QR backup mode the office Wi-Fi alone may be enough,
-          // and the server is what decides. Its "location required" answer is then
-          // replaced by this more specific reason.
+          // Still sent — the server is what decides. Its "location required" answer
+          // is then replaced by this more specific reason.
           locationProblem = found.error;
         }
       }

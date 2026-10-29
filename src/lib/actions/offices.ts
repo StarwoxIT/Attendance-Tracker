@@ -9,9 +9,7 @@ import { recordAuditLog } from "@/lib/audit/log";
 import { generateRegistrationToken } from "@/lib/network/agentAuth";
 import { getClientIpFromHeaders } from "@/lib/network/getClientIp";
 import { nanoid } from "nanoid";
-import { ipFamily, observedAddressUpdate, type IpFamily } from "@/lib/network/matchIp";
-import { getAttendanceSettings } from "@/lib/attendance/settings";
-import { endOfOfficeDay } from "@/lib/attendance/qrBackup";
+import { coveredIpFamilies, ipFamily, observedAddressUpdate, type IpFamily } from "@/lib/network/matchIp";
 import { MAX_OFFICE_RADIUS_METERS, MIN_OFFICE_RADIUS_METERS } from "@/lib/attendance/location";
 
 async function actorIp(): Promise<string> {
@@ -175,7 +173,7 @@ export async function setNetworkFailModeAction(networkId: string, failMode: "FAI
 export interface AuthorizeNetworkResult {
   ip: string;
   family: IpFamily;
-  /** Whether the network now has an address for each family — browsers can use either. */
+  /** Whether the network now matches each family (learned address or CIDR) — browsers can use either. */
   hasIpv4: boolean;
   hasIpv6: boolean;
 }
@@ -228,11 +226,12 @@ export async function authorizeCurrentNetworkAction(networkId: string): Promise<
   });
 
   revalidatePath("/admin/offices");
+  const covered = coveredIpFamilies(network);
   return {
     ip,
     family: ipFamily(ip) ?? 4,
-    hasIpv4: !!network.currentPublicIp,
-    hasIpv6: !!network.currentPublicIpv6,
+    hasIpv4: covered.ipv4,
+    hasIpv6: covered.ipv6,
   };
 }
 
@@ -269,24 +268,4 @@ export async function updateOfficeLocationAction(officeId: string, formData: For
 
   revalidatePath("/admin/offices");
   return {};
-}
-
-/** The manual side of the QR + location backup — see lib/attendance/qrBackup.ts. */
-export async function setQrBackupAction(officeId: string, on: boolean): Promise<void> {
-  const user = await requirePermission("offices", "manage");
-  const settings = await getAttendanceSettings();
-  const qrBackupUntil = on ? endOfOfficeDay(new Date(), settings.timezone) : null;
-
-  await prisma.office.update({ where: { id: officeId }, data: { qrBackupUntil } });
-
-  await recordAuditLog({
-    userId: user.id,
-    action: on ? "office.qr_backup_on" : "office.qr_backup_off",
-    resource: "office",
-    resourceId: officeId,
-    newValue: { qrBackupUntil: qrBackupUntil?.toISOString() ?? null },
-    ipAddress: await actorIp(),
-  });
-
-  revalidatePath("/admin/offices");
 }

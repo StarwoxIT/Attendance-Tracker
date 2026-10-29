@@ -6,33 +6,7 @@ import { CreateDepartmentForm } from "./CreateDepartmentForm";
 import { PageHeader } from "@/components/admin/PageHeader";
 import { requireUser } from "@/lib/auth/guard";
 import { hasPermission } from "@/lib/auth/rbac";
-import { formatInTimeZone } from "date-fns-tz";
-import { getAttendanceSettings } from "@/lib/attendance/settings";
-import { qrBackupState, type QrBackupState } from "@/lib/attendance/qrBackup";
-import { OfficeLocationPanel, type QrBackupStatus } from "./OfficeLocationPanel";
-
-function describeQrBackup(state: QrBackupState, timezone: string): QrBackupStatus {
-  switch (state.reason) {
-    case "MANUAL":
-      return { active: true, manual: true, text: `On — switched on by an admin until ${formatInTimeZone(state.until, timezone, "h:mm a")} today` };
-    case "NETWORK_OFFLINE":
-      return {
-        active: true,
-        manual: false,
-        text: state.lastSeenAt
-          ? `On automatically — the Network Agent hasn't checked in since ${formatInTimeZone(state.lastSeenAt, timezone, "d MMM, h:mm a")}`
-          : "On automatically — the Network Agent hasn't checked in yet",
-      };
-    case "NETWORK_ONLINE":
-      return { active: false, manual: false, text: "Off — the office network is online" };
-    case "NO_AGENT":
-      return {
-        active: false,
-        manual: false,
-        text: "Off — this office has no Network Agent to detect an outage, so the backup only opens when switched on here",
-      };
-  }
-}
+import { OfficeLocationPanel } from "./OfficeLocationPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +15,7 @@ export default async function OfficesPage() {
   // Departments are an employee attribute, so whoever can manage employees (incl. HR) can add them.
   const canManageDepartments = hasPermission(user.role, "employees", "manage");
   const canManageOffices = hasPermission(user.role, "offices", "manage");
-  const [offices, departments, settings] = await Promise.all([
+  const [offices, departments] = await Promise.all([
     prisma.office.findMany({
       include: { officeNetworks: true, _count: { select: { employees: true } } },
       orderBy: { createdAt: "asc" },
@@ -50,9 +24,7 @@ export default async function OfficesPage() {
       include: { _count: { select: { employees: { where: { isDeleted: false } } } } },
       orderBy: { name: "asc" },
     }),
-    getAttendanceSettings(),
   ]);
-  const usesQrBackup = settings.attendanceMode === "NETWORK_WITH_QR_BACKUP";
 
   return (
     <>
@@ -105,14 +77,6 @@ export default async function OfficesPage() {
                 latitude={office.latitude}
                 longitude={office.longitude}
                 radiusMeters={office.locationRadiusMeters}
-                backup={
-                  usesQrBackup
-                    ? describeQrBackup(
-                        qrBackupState(office, office.officeNetworks, settings.networkStaleThresholdMinutes),
-                        settings.timezone
-                      )
-                    : null
-                }
                 canManage={canManageOffices}
               />
             </CardContent>

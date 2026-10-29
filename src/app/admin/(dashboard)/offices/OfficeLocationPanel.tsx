@@ -3,29 +3,21 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { setQrBackupAction, updateOfficeLocationAction } from "@/lib/actions/offices";
+import { updateOfficeLocationAction } from "@/lib/actions/offices";
 import { toast, toastError } from "@/hooks/use-toast";
 
 /** A captured reading looser than this is worth flagging — it could put the pin on the wrong building. */
 const LOOSE_CAPTURE_METERS = 50;
-
-export interface QrBackupStatus {
-  active: boolean;
-  manual: boolean;
-  text: string;
-}
 
 interface OfficeLocationPanelProps {
   officeId: string;
   latitude: number | null;
   longitude: number | null;
   radiusMeters: number;
-  /** Null when the attendance mode doesn't use the backup. */
-  backup: QrBackupStatus | null;
   canManage: boolean;
 }
 
-export function OfficeLocationPanel({ officeId, latitude, longitude, radiusMeters, backup, canManage }: OfficeLocationPanelProps) {
+export function OfficeLocationPanel({ officeId, latitude, longitude, radiusMeters, canManage }: OfficeLocationPanelProps) {
   const [lat, setLat] = useState(latitude?.toString() ?? "");
   const [lng, setLng] = useState(longitude?.toString() ?? "");
   const [radius, setRadius] = useState(radiusMeters.toString());
@@ -40,6 +32,14 @@ export function OfficeLocationPanel({ officeId, latitude, longitude, radiusMeter
     lat && lng ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}` : null;
 
   function useCurrentLocation() {
+    if (!window.isSecureContext) {
+      setCapture({
+        busy: false,
+        note: "Browsers only share location on https pages, and this site isn't on https yet — enter the coordinates instead. Staff QR check-ins need https too.",
+        warn: true,
+      });
+      return;
+    }
     if (!navigator.geolocation) {
       setCapture({ busy: false, note: "This browser can't share its location — enter the coordinates instead.", warn: true });
       return;
@@ -84,24 +84,14 @@ export function OfficeLocationPanel({ officeId, latitude, longitude, radiusMeter
     });
   }
 
-  function switchBackup(on: boolean) {
-    startTransition(async () => {
-      try {
-        await setQrBackupAction(officeId, on);
-        toast({ title: on ? "QR backup on until the end of today" : "QR backup switched off", variant: "success" });
-      } catch (err) {
-        toastError(err, "Couldn't change the QR backup");
-      }
-    });
-  }
-
   return (
     <div className="space-y-3 rounded-md border p-3">
       <div>
         <p className="text-sm font-medium">Office location (for QR attendance)</p>
         <p className="text-xs text-muted-foreground">
-          A QR scan only counts when the employee&apos;s phone puts them within the radius of this point.
-          {latitude == null ? " Not set yet — QR + location attendance won't work for this office until it is." : null}
+          In QR + location mode, a scan only counts when the employee&apos;s phone puts them within the radius of
+          this point.
+          {latitude == null ? " Not set yet — QR + location mode won't work for this office until it is." : null}
         </p>
       </div>
 
@@ -147,25 +137,6 @@ export function OfficeLocationPanel({ officeId, latitude, longitude, radiusMeter
         </p>
       ) : null}
 
-      {backup ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
-          <p className="text-sm">
-            <span className="font-medium">QR backup: </span>
-            <span className={backup.active ? "text-amber-700" : "text-muted-foreground"}>{backup.text}</span>
-          </p>
-          {canManage ? (
-            backup.manual ? (
-              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => switchBackup(false)}>
-                Switch off
-              </Button>
-            ) : (
-              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => switchBackup(true)}>
-                Switch on for today
-              </Button>
-            )
-          ) : null}
-        </div>
-      ) : null}
     </div>
   );
 }

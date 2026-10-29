@@ -51,7 +51,7 @@ with its own setup docs.
 1. Employee opens `/register` (direct link) or scans the office QR, which redirects
    through `/register/qr/[token]` first. This is a deliberately different URL from
    `/admin/login` — staff never need to see or guess an admin path, and vice versa.
-2. If the deployment's attendance mode requires QR (`QR_AND_NETWORK` or `QR_ONLY`), the QR
+2. In QR + location mode (`QR_ONLY`), the QR
    landing route validates the token server-side (`lib/qr/session.ts`), opens a short-lived
    `QrAttendanceSession` bound to an httpOnly cookie, and redirects into the register screen.
    Visiting `/register` directly without that cookie shows "QR verification required" instead

@@ -17,7 +17,6 @@ import { flagDeviceReuseIfNeeded } from "./deviceFlags";
 import { parseDailyReport } from "./taskReport";
 import { notifyRole } from "@/lib/notifications/create";
 import { checkOfficeLocation, locationReadingSchema } from "./location";
-import { getQrBackupState } from "./qrBackup";
 import type { AttendanceRecord, AttendanceSettings, Employee, VerificationMethod } from "@prisma/client";
 
 /** How long after clocking in a repeat attempt without a task report is treated as
@@ -31,8 +30,6 @@ export type AttendanceDenialReason =
   | "QR_SESSION_INVALID"
   | "QR_WRONG_OFFICE"
   | "NETWORK_DENIED"
-  | "USE_QR_BACKUP"
-  | "QR_BACKUP_INACTIVE"
   | "LOCATION_REQUIRED"
   | "LOCATION_INACCURATE"
   | "LOCATION_OUT_OF_RANGE"
@@ -149,21 +146,11 @@ async function verifyLocation(officeId: string, rawLocation: unknown) {
   return checkOfficeLocation(office, reading.success ? reading.data : null);
 }
 
-async function verifyNetwork(employee: Employee, sourceIp: string) {
-  const netResult = await verifyOfficeNetwork(employee.officeId, sourceIp);
-  if (!netResult.allowed && (netResult.reason === "STALE_FAIL_CLOSED" || netResult.reason === "IP_NOT_AUTHORIZED")) {
-    await alertSuperAdminsOfNetworkDenial(employee.officeId, netResult.reason);
-  }
-  return netResult;
-}
-
 /**
  * Proves the employee is at the office, the way the attendance mode says to:
- *  - NETWORK_ONLY: on the office network.
- *  - QR_AND_NETWORK: a fresh QR scan and the office network.
- *  - QR_ONLY: a QR scan and a phone location inside the office radius.
- *  - NETWORK_WITH_QR_BACKUP: the office network; failing that, while the backup is
- *    on (network agent offline, or switched on by an admin), a QR scan and location.
+ *  - NETWORK_ONLY (Network mode): on the authorized office network.
+ *  - QR_ONLY (QR + location mode): a scan of the office QR plus a phone location
+ *    inside the office radius — for when the office network is down.
  * Nothing is written here, so any denial — including a vague location reading — can
  * simply be retried, and the QR session stays usable until a record is saved.
  */
@@ -174,63 +161,22 @@ async function verifyPresence(
 ): Promise<PresenceResult> {
   const none = { qrCodeId: null, qrSessionId: null, officeNetworkId: null, location: null };
 
-  switch (settings.attendanceMode) {
-    case "NETWORK_ONLY": {
-      const net = await verifyNetwork(employee, input.sourceIp);
-      if (!net.allowed) return { ok: false, reason: "NETWORK_DENIED" };
-      return { ok: true, verificationMethod: "NETWORK", ...none, officeNetworkId: net.officeNetworkId };
-    }
-
-    case "QR_AND_NETWORK": {
-      const qr = await verifyQrScan(input.qrSessionToken, employee, settings);
-      if (!qr.ok) return qr;
-      const net = await verifyNetwork(employee, input.sourceIp);
-      if (!net.allowed) return { ok: false, reason: "NETWORK_DENIED" };
-      return {
-        ok: true,
-        verificationMethod: "QR_NETWORK",
-        ...none,
-        qrCodeId: qr.qrCodeId,
-        qrSessionId: qr.qrSessionId,
-        officeNetworkId: net.officeNetworkId,
-      };
-    }
-
-    case "QR_ONLY": {
-      const qr = await verifyQrScan(input.qrSessionToken, employee, settings);
-      if (!qr.ok) return qr;
-      const location = await verifyLocation(qr.officeId, input.location);
-      if (!location.ok) return { ...location };
-      return { ok: true, verificationMethod: "QR_LOCATION", ...none, qrCodeId: qr.qrCodeId, qrSessionId: qr.qrSessionId, location };
-    }
-
-    case "NETWORK_WITH_QR_BACKUP": {
-      // Not verifyNetwork(): failing the network check is the normal way into the
-      // backup, so Super Admins are only alerted if the backup can't help either.
-      const net = await verifyOfficeNetwork(employee.officeId, input.sourceIp);
-      if (net.allowed) {
-        return { ok: true, verificationMethod: "NETWORK", ...none, officeNetworkId: net.officeNetworkId };
-      }
-
-      if (!input.qrSessionToken) {
-        const backup = await getQrBackupState(employee.officeId, settings.networkStaleThresholdMinutes);
-        if (backup.active) return { ok: false, reason: "USE_QR_BACKUP" };
-        if (net.reason === "STALE_FAIL_CLOSED" || net.reason === "IP_NOT_AUTHORIZED") {
-          await alertSuperAdminsOfNetworkDenial(employee.officeId, net.reason);
-        }
-        return { ok: false, reason: "NETWORK_DENIED" };
-      }
-
-      const qr = await verifyQrScan(input.qrSessionToken, employee, settings);
-      if (!qr.ok) return qr;
-      // The backup that matters is the one for the office the poster hangs in.
-      const backup = await getQrBackupState(qr.officeId, settings.networkStaleThresholdMinutes);
-      if (!backup.active) return { ok: false, reason: "QR_BACKUP_INACTIVE" };
-      const location = await verifyLocation(qr.officeId, input.location);
-      if (!location.ok) return { ...location };
-      return { ok: true, verificationMethod: "QR_LOCATION", ...none, qrCodeId: qr.qrCodeId, qrSessionId: qr.qrSessionId, location };
-    }
+  if (settings.attendanceMode === "QR_ONLY") {
+    const qr = await verifyQrScan(input.qrSessionToken, employee, settings);
+    if (!qr.ok) return qr;
+    const location = await verifyLocation(qr.officeId, input.location);
+    if (!location.ok) return { ...location };
+    return { ok: true, verificationMethod: "QR_LOCATION", ...none, qrCodeId: qr.qrCodeId, qrSessionId: qr.qrSessionId, location };
   }
+
+  const net = await verifyOfficeNetwork(employee.officeId, input.sourceIp);
+  if (!net.allowed) {
+    if (net.reason === "STALE_FAIL_CLOSED" || net.reason === "IP_NOT_AUTHORIZED") {
+      await alertSuperAdminsOfNetworkDenial(employee.officeId, net.reason);
+    }
+    return { ok: false, reason: "NETWORK_DENIED" };
+  }
+  return { ok: true, verificationMethod: "NETWORK", ...none, officeNetworkId: net.officeNetworkId };
 }
 
 /**

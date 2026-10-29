@@ -8,6 +8,7 @@ import { PageSizeSelect } from "@/components/admin/PageSizeSelect";
 import { resolvePage, resolvePageSize } from "@/lib/pagination";
 import { GenerateQrForm, DeactivateQrButton } from "./QrActions";
 import { isPermanentQr } from "@/lib/qr/token";
+import { ATTENDANCE_MODE_LABELS } from "@/lib/attendance/modes";
 
 export const dynamic = "force-dynamic";
 
@@ -57,18 +58,13 @@ export default async function QrPage({
       <PageHeader>
         <h1 className="text-2xl font-bold">QR Codes</h1>
         <p className="text-sm text-muted-foreground">
-          Attendance mode is <strong>{settings.attendanceMode.replace(/_/g, " ")}</strong>.{" "}
+          Attendance is in <strong>{ATTENDANCE_MODE_LABELS[settings.attendanceMode]}</strong>. QR codes are used in QR +
+          location mode: generate a <strong>No expiry</strong> code for each office and print it — scans only count
+          from inside the office location set on Offices &amp; Network.{" "}
           {settings.attendanceMode === "QR_ONLY" ? (
             <span className="text-amber-700">
-              QR + location relies on the location phones report, which a determined person can fake — the network
-              check is stronger, so keep this for when the office network is unavailable.
-            </span>
-          ) : null}
-          {settings.attendanceMode === "NETWORK_WITH_QR_BACKUP" || settings.attendanceMode === "QR_ONLY" ? (
-            <span>
-              {" "}
-              Generate a <strong>No expiry</strong> code for each office and print it. Scans only count from inside the
-              office location set on Offices &amp; Network.
+              QR + location relies on the location phones report, which a determined person can fake — switch back to
+              Network mode once the office network is up.
             </span>
           ) : null}
         </p>
@@ -79,13 +75,7 @@ export default async function QrPage({
           <CardTitle>Generate QR</CardTitle>
         </CardHeader>
         <CardContent>
-          <GenerateQrForm
-            offices={offices}
-            todayStr={todayStr}
-            defaultDuration={
-              settings.attendanceMode === "NETWORK_WITH_QR_BACKUP" || settings.attendanceMode === "QR_ONLY" ? "PERMANENT" : "DAY"
-            }
-          />
+          <GenerateQrForm offices={offices} todayStr={todayStr} defaultDuration="PERMANENT" />
           {offices.length === 0 ? (
             <p className="mt-2 text-sm text-amber-700">Create an office first.</p>
           ) : null}

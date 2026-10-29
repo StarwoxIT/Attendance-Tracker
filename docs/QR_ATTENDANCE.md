@@ -6,9 +6,20 @@ Set in Admin → Settings → Attendance rules (`AttendanceSettings.attendanceMo
 
 | Mode | Requires |
 |---|---|
-| `NETWORK_ONLY` | Attendance ID + authorized office network |
-| `QR_AND_NETWORK` (default) | Attendance ID + valid daily QR + authorized office network |
-| `QR_ONLY` | Attendance ID + valid daily QR — **weaker** physical-presence proof; the admin UI shows a warning when this is selected |
+| **Network mode** (`NETWORK_ONLY`, default) | Attendance ID + authorized office network |
+| **QR + location mode** (`QR_ONLY`) | Attendance ID + a scan of the office QR + a phone location inside the office radius — for when the office network is down (e.g. a power cut). Staff use mobile data. |
+
+An admin switches to QR + location mode in Settings when the office network goes down,
+and back to Network mode once it's up. QR + location mode needs:
+
+- each office's latitude, longitude and radius (default 150 m) set on Offices & Network;
+- a printed **No expiry** QR code per office (QR Codes page);
+- the site served over **https** — browsers only share location with https pages.
+
+The server makes the location decision (`lib/attendance/location.ts`) from the coordinates the
+phone reports. That stops a forwarded photo of the QR being used from home, but not someone
+who fakes their phone's GPS, which is why Network mode is the everyday setting. Each record
+keeps the reported distance from the office and the reading's accuracy (not the coordinates).
 
 ## Generating a QR code
 
@@ -62,12 +73,12 @@ The QR session cookie is httpOnly specifically so the session token never has to
 by (or be readable by) client-side JavaScript — the browser just carries the cookie
 automatically on the follow-up POST.
 
-## Why QR alone isn't enough in `QR_AND_NETWORK` mode
+## Why the QR alone isn't enough
 
-A photo of the QR code (or a forwarded link) can leave the building; the office Wi-Fi can't.
-`QR_AND_NETWORK` requires both a valid session from a *real* scan of *today's* code **and**
-the request's real source IP matching the office's currently-verified network — see the
-acceptance scenarios in `docs/SECURITY.md` (employee-at-home-with-a-QR-screenshot is denied).
+A photo of the QR code (or a forwarded link) can leave the building, and a printed code
+never expires. QR + location mode therefore also requires the phone's reported location to
+be inside the office radius; a failed or vague reading records nothing and can be retried
+with the same scan.
 
 ## Cross-office QR
 

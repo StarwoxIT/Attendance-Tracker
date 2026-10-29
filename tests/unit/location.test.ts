@@ -6,7 +6,6 @@ import {
   locationReadingSchema,
   MAX_LOCATION_ACCURACY_METERS,
 } from "@/lib/attendance/location";
-import { endOfOfficeDay, qrBackupState } from "@/lib/attendance/qrBackup";
 
 // Roughly Victoria Island, Lagos. 0.001° of latitude is ~111 m.
 const OFFICE = { latitude: 6.4281, longitude: 3.4219, locationRadiusMeters: 150 };
@@ -67,43 +66,5 @@ describe("formatDistance", () => {
     expect(formatDistance(846)).toBe("about 850 m");
     expect(formatDistance(2380)).toBe("about 2.4 km");
     expect(formatDistance(525_000)).toBe("about 525 km");
-  });
-});
-
-describe("qrBackupState", () => {
-  const now = new Date("2026-10-27T09:00:00Z");
-  const minutesAgo = (m: number) => new Date(now.getTime() - m * 60_000);
-  const agent = (lastVerifiedAt: Date | null) => ({ status: "VERIFIED" as const, agentSigningSecret: "s", lastVerifiedAt });
-
-  it("opens automatically once the Network Agent stops checking in", () => {
-    expect(qrBackupState({ qrBackupUntil: null }, [agent(minutesAgo(5))], 30, now)).toEqual({
-      active: false,
-      reason: "NETWORK_ONLINE",
-    });
-    expect(qrBackupState({ qrBackupUntil: null }, [agent(minutesAgo(45))], 30, now)).toEqual({
-      active: true,
-      reason: "NETWORK_OFFLINE",
-      lastSeenAt: minutesAgo(45),
-    });
-  });
-
-  it("never opens automatically for an office without an agent — it has no heartbeat to lose", () => {
-    const manualOnly = { status: "VERIFIED" as const, agentSigningSecret: null, lastVerifiedAt: minutesAgo(600) };
-    expect(qrBackupState({ qrBackupUntil: null }, [manualOnly], 30, now)).toEqual({ active: false, reason: "NO_AGENT" });
-    expect(qrBackupState({ qrBackupUntil: null }, [], 30, now).active).toBe(false);
-  });
-
-  it("follows the manual switch until it lapses", () => {
-    const later = new Date(now.getTime() + 3_600_000);
-    expect(qrBackupState({ qrBackupUntil: later }, [agent(minutesAgo(1))], 30, now)).toEqual({
-      active: true,
-      reason: "MANUAL",
-      until: later,
-    });
-    expect(qrBackupState({ qrBackupUntil: minutesAgo(1) }, [agent(minutesAgo(1))], 30, now).active).toBe(false);
-  });
-
-  it("switches off at the end of the office's day", () => {
-    expect(endOfOfficeDay(now, "Africa/Lagos").toISOString()).toBe("2026-10-27T22:59:59.999Z");
   });
 });

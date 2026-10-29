@@ -5,15 +5,11 @@ export const DENIAL_MESSAGES: Record<AttendanceDenialReason, string> = {
   RATE_LIMITED: "Too many attempts. Please wait a moment and try again.",
   INVALID_EMPLOYEE: "Attendance ID not recognized.\nPlease contact HR if you believe this is an error.",
   QR_REQUIRED:
-    "Today's attendance requires QR verification.\nPlease scan the attendance QR code displayed at the office.",
+    "Attendance is by QR code right now.\nPlease scan the attendance QR code displayed at the office with your phone.",
   QR_SESSION_INVALID: "This QR code is invalid or has expired.\nPlease scan the attendance QR code at the office again.",
   QR_WRONG_OFFICE: "This QR code is not valid for your assigned office.",
   NETWORK_DENIED:
     "Attendance unavailable.\nYou must be connected to the company's authorized office network to clock attendance.",
-  USE_QR_BACKUP:
-    "You're not on the office Wi-Fi, and it looks like it's down.\nScan the attendance QR code poster at the office with your phone to clock in or out.",
-  QR_BACKUP_INACTIVE:
-    "The office Wi-Fi is working, so the QR code backup isn't open right now.\nConnect to the office Wi-Fi and try again.",
   LOCATION_REQUIRED:
     "We need your location to confirm you're at the office.\nAllow location access when your phone asks, then try again.",
   LOCATION_INACCURATE:

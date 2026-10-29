@@ -48,9 +48,9 @@ account or a developer can reset it directly in the database — there's no self
 - **Employees**: search, view/edit a profile, see their recent attendance, deactivate someone
   who's left (deactivated employees can't clock in), or regenerate their Attendance ID if
   they lost it.
-- **QR Codes**: each day needs a fresh QR if you're in `QR_AND_NETWORK`/`QR_ONLY` mode —
-  generate it each morning (or ahead of time by picking a future date), or deactivate one if
-  it's been compromised (e.g. posted publicly online by mistake).
+- **QR Codes**: used in QR + location mode (for when the office network is down). Generate
+  a **No expiry** code per office and print it; deactivate or regenerate one if it's been
+  compromised (e.g. posted publicly online by mistake).
 - **Device Flags**: shows whenever a phone/laptop clocks in as a different employee than it
   was last used by — a possible sign someone clocked in for an absent colleague. It never
   blocks the clock-in itself (a shared device, like a reception tablet, is normal and will
@@ -89,4 +89,4 @@ The screen tells them why in plain language:
 - *"This QR code is invalid or has expired"* — they scanned yesterday's printout, or the QR
   was regenerated/deactivated. Print the current one.
 - *"Today's attendance requires QR verification"* — they went straight to the attendance page
-  without scanning the QR first (only relevant in QR_AND_NETWORK/QR_ONLY mode).
+  without scanning the QR first (only relevant in QR + location mode).

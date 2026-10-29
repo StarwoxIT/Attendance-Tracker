@@ -99,11 +99,7 @@ export async function generateQrPdf(params: GenerateQrPdfParams): Promise<Buffer
       logoDataUrl={logoDataUrl}
       officeName={params.officeName}
       dateLabel={dateLabel}
-      instructions={
-        permanent
-          ? "Scan with your phone's camera, enter your Attendance ID, and allow location access when asked. Your location is used only to confirm you're at the office."
-          : "Scan this QR code to begin attendance. You must also be connected to the company's authorized office network."
-      }
+      instructions="Scan with your phone's camera, enter your Attendance ID, and allow location access when asked. Your location is used only to confirm you're at the office."
       qrDataUrl={qrDataUrl}
     />
   );

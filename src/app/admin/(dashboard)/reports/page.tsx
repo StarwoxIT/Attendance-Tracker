@@ -103,7 +103,11 @@ export default async function ReportsPage() {
           <CardTitle>Employee attendance report</CardTitle>
         </CardHeader>
         <CardContent>
-          <form action="/api/reports/daily" className="flex flex-wrap items-end gap-2">
+          <p className="mb-3 text-sm text-muted-foreground">
+            One row per day for the chosen employee: clock-in and clock-out times
+            {canViewTaskReports ? ", with the tasks they reported and each task's status" : ""}.
+          </p>
+          <form action="/api/reports/employee" className="flex flex-wrap items-end gap-2">
             <Field label="Employee">
               <select name="employeeId" required className="h-9 rounded-md border border-input bg-background px-2 text-sm">
                 {employees.map((e) => (

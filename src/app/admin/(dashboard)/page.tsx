@@ -5,6 +5,7 @@ import { getTodaySummary, getWeeklyTrend } from "@/lib/dashboard/summary";
 import { WeeklyTrendChart } from "./WeeklyTrendChart";
 import { formatInTimeZone } from "date-fns-tz";
 import { prisma } from "@/lib/db/prisma";
+import { ATTENDANCE_MODE_LABELS } from "@/lib/attendance/modes";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,7 @@ export default async function AdminDashboardPage() {
           </div>
           <div className="flex gap-2 text-sm">
             <span className="rounded-full bg-primary/10 px-3 py-1 font-medium text-primary">
-              Mode: {settings.attendanceMode.replace(/_/g, " ")}
+              {ATTENDANCE_MODE_LABELS[settings.attendanceMode]}
             </span>
           </div>
         </div>

@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { updateAttendanceSettingsAction } from "@/lib/actions/settings";
 import { toast, toastError } from "@/hooks/use-toast";
-import type { AttendanceSettings } from "@prisma/client";
+import { ATTENDANCE_MODE_DESCRIPTIONS, ATTENDANCE_MODE_LABELS } from "@/lib/attendance/modes";
+import type { AttendanceMode, AttendanceSettings } from "@prisma/client";
 
 export function AttendanceSettingsForm({ settings }: { settings: AttendanceSettings }) {
   const [pending, startTransition] = useTransition();
@@ -42,14 +43,15 @@ export function AttendanceSettingsForm({ settings }: { settings: AttendanceSetti
       <div>
         <label className="mb-1 block text-sm font-medium">Attendance mode</label>
         <select name="attendanceMode" defaultValue={settings.attendanceMode} className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm">
-          <option value="NETWORK_ONLY">Network only</option>
-          <option value="NETWORK_WITH_QR_BACKUP">Network, with QR + location backup (recommended)</option>
-          <option value="QR_AND_NETWORK">QR + Network</option>
-          <option value="QR_ONLY">QR + location only</option>
+          {(Object.keys(ATTENDANCE_MODE_LABELS) as AttendanceMode[]).map((mode) => (
+            <option key={mode} value={mode}>
+              {ATTENDANCE_MODE_LABELS[mode]}
+            </option>
+          ))}
         </select>
         <p className="mt-1 text-xs text-muted-foreground">
-          The backup lets staff scan the printed QR code on mobile data when the office network is down — it opens
-          automatically when the Network Agent stops checking in, or from Offices &amp; Network.
+          {ATTENDANCE_MODE_DESCRIPTIONS.NETWORK_ONLY} {ATTENDANCE_MODE_DESCRIPTIONS.QR_ONLY} Switch back to Network
+          mode once the network is up again.
         </p>
       </div>
       <div>

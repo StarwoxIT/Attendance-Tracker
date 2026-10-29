@@ -10,7 +10,7 @@ import {
   authorizeCurrentNetworkAction,
   type AuthorizeNetworkResult,
 } from "@/lib/actions/offices";
-import { ipv6NetworkLabel } from "@/lib/network/matchIp";
+import { coveredIpFamilies, ipv6NetworkLabel } from "@/lib/network/matchIp";
 import { toast, toastError } from "@/hooks/use-toast";
 import type { OfficeNetwork } from "@prisma/client";
 
@@ -114,6 +114,7 @@ export function NetworkRow({ network }: { network: OfficeNetwork }) {
   const [manualResult, setManualResult] = useState<AuthorizeNetworkResult | { error: string } | null>(null);
 
   const staleOrUnverified = network.status !== "VERIFIED";
+  const covered = coveredIpFamilies(network);
 
   return (
     <div className="rounded-md border p-3 text-sm">
@@ -125,10 +126,10 @@ export function NetworkRow({ network }: { network: OfficeNetwork }) {
             {network.currentPublicIpv6 ? ipv6NetworkLabel(network.currentPublicIpv6) : "—"}
             {network.cidr ? ` · CIDR: ${network.cidr}` : ""}
           </p>
-          {network.status !== "DISABLED" && !!network.currentPublicIp !== !!network.currentPublicIpv6 ? (
+          {network.status !== "DISABLED" && covered.ipv4 !== covered.ipv6 ? (
             <p className="text-xs text-amber-700">
-              Only IPv{network.currentPublicIp ? "4" : "6"} captured — if this Wi-Fi also has IPv
-              {network.currentPublicIp ? "6" : "4"}, employees whose browser uses it will be refused until it&apos;s
+              Only IPv{covered.ipv4 ? "4" : "6"} captured — if this Wi-Fi also has IPv
+              {covered.ipv4 ? "6" : "4"}, employees whose browser uses it will be refused until it&apos;s
               captured too.
             </p>
           ) : null}

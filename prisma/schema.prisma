@@ -95,9 +95,6 @@ model Office {
   latitude             Float?
   longitude            Float?
   locationRadiusMeters Int       @default(150)
-  /// Admin switched the QR + location backup on by hand (for an outage the Network
-  /// Agent hasn't flagged yet, or an office without one); it lapses at this time.
-  qrBackupUntil        DateTime?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -581,13 +578,12 @@ model CompanySettings {
   @@map("company_settings")
 }
 
+/// Shown to admins as "Network mode" and "QR + location mode" (lib/attendance/modes.ts).
 enum AttendanceMode {
+  /// On the authorized office network.
   NETWORK_ONLY
-  /// Office network as normal; a scan of the printed QR plus a location check is
-  /// accepted instead while the backup is on (see lib/attendance/qrBackup.ts).
-  NETWORK_WITH_QR_BACKUP
-  QR_AND_NETWORK
-  /// QR scan plus a location check — no network needed.
+  /// A scan of the printed office QR plus a phone location inside the office radius —
+  /// for when the office network is down. No network needed.
   QR_ONLY
 }
 
@@ -597,7 +593,7 @@ model AttendanceSettings {
   workStart                String         @default("09:00")
   gracePeriodMinutes        Int            @default(15)
   workEnd                  String         @default("17:00")
-  attendanceMode            AttendanceMode @default(QR_AND_NETWORK)
+  attendanceMode            AttendanceMode @default(NETWORK_ONLY)
   weekendIsOvertime         Boolean        @default(true)
   holidayIsOvertime         Boolean        @default(true)
   qrSessionMinutes           Int            @default(10)

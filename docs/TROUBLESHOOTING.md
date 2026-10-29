@@ -60,9 +60,11 @@ different browser or device on the office Wi-Fi until both are filled in.
 - **"This QR code is invalid or has expired"**: almost always a printout from a previous day,
   or the code was regenerated (posting a new QR invalidates the old one immediately). Print
   the current one from Admin → QR Codes.
-- **QR scans fine but attendance still gets denied**: in `QR_AND_NETWORK` mode the office
-  network check still applies after a successful scan — see the network troubleshooting steps
-  above.
+- **QR scans fine but attendance still gets denied with the office-network message**: the
+  attendance mode is still Network mode — switch to QR + location mode in Settings.
+- **"Your location can't be checked because this attendance page isn't on a secure (https)
+  connection"**: browsers only share location with https pages. The site needs a domain and
+  TLS (see `docs/DEPLOYMENT_AWS.md`), then reprint the QR codes so they point at the https address.
 - **"Your location is outside the office area" for someone who is at the office**: check the
   office's pin with **Check on map** (Offices & Network). If it's right, raise the radius a
   little: indoor GPS is often 20–60 m off, worse during a power cut when the phone can't use
@@ -70,10 +72,6 @@ different browser or device on the office Wi-Fi until both are filled in.
 - **"Location access is blocked"**: the employee denied the browser's prompt once and it
   remembers. iPhone: Settings › Privacy & Security › Location Services › Safari Websites ›
   While Using the App. Android: the icon left of the web address › Permissions › Location.
-- **"The QR code backup isn't open right now"** (mode *Network, with QR + location backup*):
-  the backup only opens when the office's Network Agent stops checking in, or when an admin
-  clicks **Switch on for today** on Offices & Network. An office with no Network Agent never
-  opens it automatically.
 
 ## Build/deploy issues
 
